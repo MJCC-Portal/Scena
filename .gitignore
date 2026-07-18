@@ -5,3 +5,5 @@
 
 # Supabase CLI state is intentionally not configured by this project setup.
 supabase/.temp/
+node_modules/
+dist/
