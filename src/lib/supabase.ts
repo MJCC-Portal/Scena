@@ -4,6 +4,28 @@ const url = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string | undefined;
 export const supabase = url && key ? createClient(url, key) : null;
 
+export type ManagerContext = {
+  organization: { id: string; name: string; slug: string; status: "active" | "suspended" };
+  membership: { role: "owner" | "admin" | "operator" | "viewer" };
+};
+
+export async function loadManagerContext(): Promise<ManagerContext> {
+  if (!supabase) throw new Error("Marquee authentication is not configured");
+  const { data: membership, error: membershipError } = await supabase
+    .from("organization_members")
+    .select("org_id, role, organizations(id, name, slug, status)")
+    .limit(1)
+    .maybeSingle();
+  if (membershipError) throw new Error("Could not load your MJCC organization access");
+  const organization = Array.isArray(membership?.organizations) ? membership.organizations[0] : membership?.organizations;
+  if (!membership || !organization) throw new Error("Your account is not linked to an MJCC organization");
+  if (organization.status !== "active") throw new Error("Your MJCC organization is currently suspended");
+  return {
+    organization: organization as ManagerContext["organization"],
+    membership: { role: membership.role as ManagerContext["membership"]["role"] },
+  };
+}
+
 export async function exchangeMjccCode(code: string) {
   if (!supabase) throw new Error("Marquee authentication is not configured");
   const response = await fetch(`${url}/functions/v1/mjcc-sso-exchange`, {
