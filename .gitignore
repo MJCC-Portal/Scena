@@ -1,0 +1,7 @@
+# Local credentials used by the Supabase MCP connection
+.env
+.env.*
+!.env.example
+
+# Supabase CLI state is intentionally not configured by this project setup.
+supabase/.temp/
