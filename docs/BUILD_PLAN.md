@@ -1,15 +1,15 @@
-# Marquee build plan
+# Scena build plan
 
 Status: governing implementation plan
 
 This plan is shared by Codex and Claude Code. It is the default sequence and
-operating contract for Marquee. A later user decision can change it, but no
+operating contract for Scena. A later user decision can change it, but no
 agent should silently skip a gate, invent a new auth model, or broaden scope
 without recording the change here or in the project changelog.
 
 ## 1. Product boundary
 
-Marquee is one website with two protected surfaces:
+Scena is one website with two protected surfaces:
 
 1. **Manager portal** — MJCC-authenticated managers create scenes, start and
    stop display sessions, rotate kiosk codes, and monitor active displays.
@@ -21,7 +21,7 @@ manager session, organization membership, service key, or reusable tenant
 credential.
 
 The first organization is `mjcc`. The first identity authority is KpnCompute
-MJCC. Marquee does not create independent manager passwords and never links
+MJCC. Scena does not create independent manager passwords and never links
 accounts by email.
 
 ## 2. Current baseline
@@ -33,14 +33,14 @@ Already established:
 - The `mjcc` organization exists.
 - Immutable MJCC identity mappings exist for manager provisioning.
 - The MJCC SSO API is live in KpnCompute.
-- The Marquee SSO Edge Function is deployed.
-- The Marquee sign-in screen and MJCC launch flow exist.
+- The Scena SSO Edge Function is deployed.
+- The Scena sign-in screen and MJCC launch flow exist.
 - Agy is the primary project CLI AI; Claude Code is the implementation and
   review partner; Codex supervises.
 
 Known activation gate:
 
-- Scena still needs a production website URL before `MARQUEE_SSO_URL` can be
+- Scena still needs a production website URL before `Scena_SSO_URL` can be
   set and the real browser redirect can be tested end to end.
 
 ## 3. Governing engineering strategy
@@ -64,7 +64,7 @@ The sequence for every feature is:
 ### Deliverables
 
 - Production hosting decision and URL for Scena.
-- `MARQUEE_SSO_URL` configured in KpnCompute.
+- `Scena_SSO_URL` configured in KpnCompute.
 - Scena environment variables configured only in hosting/function secrets.
 - A single documented local development command.
 - Error handling, logging, and health-check conventions.
@@ -75,7 +75,7 @@ The sequence for every feature is:
 - No secret appears in Git, browser bundles, screenshots, or logs.
 - `npm.cmd run build` and `npx.cmd tsc -b` pass from a mapped drive.
 - Supabase MCP verifies tables, RLS, policies, and zero unintended rows.
-- KpnCompute OpenAPI contains both Marquee SSO endpoints.
+- KpnCompute OpenAPI contains both Scena SSO endpoints.
 - The SSO callback works once with a real authorized MJCC account.
 
 ## 5. Phase 1 — manager shell and organization context
@@ -98,7 +98,7 @@ The sequence for every feature is:
 ### Acceptance
 
 - An MJCC manager can sign in, reload, sign out, and return through SSO.
-- A user without a Marquee grant cannot obtain a Marquee session.
+- A user without a Scena grant cannot obtain a Scena session.
 - A viewer cannot see mutation controls.
 
 ## 6. Phase 2 — scene management

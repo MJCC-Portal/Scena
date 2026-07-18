@@ -10,7 +10,7 @@ export type ManagerContext = {
 };
 
 export async function loadManagerContext(): Promise<ManagerContext> {
-  if (!supabase) throw new Error("Marquee authentication is not configured");
+  if (!supabase) throw new Error("Scena authentication is not configured");
   const { data: membership, error: membershipError } = await supabase
     .from("organization_members")
     .select("org_id, role, organizations(id, name, slug, status)")
@@ -27,7 +27,7 @@ export async function loadManagerContext(): Promise<ManagerContext> {
 }
 
 export async function exchangeMjccCode(code: string) {
-  if (!supabase) throw new Error("Marquee authentication is not configured");
+  if (!supabase) throw new Error("Scena authentication is not configured");
   const response = await fetch(`${url}/functions/v1/mjcc-sso-exchange`, {
     method: "POST",
     headers: { "content-type": "application/json", apikey: key!, Authorization: `Bearer ${key!}` },

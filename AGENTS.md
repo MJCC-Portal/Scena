@@ -1,6 +1,6 @@
 # Scena project operating rules
 
-Scena is the Marquee manager portal and kiosk display website.
+Scena is the Scena manager portal and kiosk display website.
 
 The governing implementation sequence is [docs/BUILD_PLAN.md](docs/BUILD_PLAN.md).
 Codex and Claude must follow its phase gates and definition of done.
@@ -18,7 +18,7 @@ Codex and Claude must follow its phase gates and definition of done.
 
 ## SSO boundary
 
-KpnCompute MJCC is the identity authority. Marquee uses the server-side
+KpnCompute MJCC is the identity authority. Scena uses the server-side
 `mjcc-sso-exchange` Edge Function and immutable MJCC identity mappings.
 Manager access is organization-scoped to `mjcc`; kiosk access codes are a
 separate flow.

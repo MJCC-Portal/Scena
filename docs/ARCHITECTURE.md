@@ -1,6 +1,6 @@
-# Marquee MVP architecture
+# Scena MVP architecture
 
-Marquee is one website with two surfaces:
+Scena is one website with two surfaces:
 
 - **Manager portal:** authenticated managers create and control display sessions.
 - **Kiosk interface:** a display-only page where a kiosk enters a temporary access code to begin a session stream.
@@ -10,7 +10,7 @@ The manager portal is the control plane. A kiosk never receives manager permissi
 ## MVP flow
 
 1. A manager creates or activates a session for their organization.
-2. Marquee creates a short-lived access code for that session.
+2. Scena creates a short-lived access code for that session.
 3. The kiosk submits the code to an Edge Function.
 4. The Edge Function verifies the code, applies expiry and attempt limits, and issues a short-lived display credential containing the session identity.
 5. The kiosk reads only the active session and its assigned scene through RLS-protected APIs/Realtime.
@@ -33,7 +33,7 @@ reviewed SQL, then verify tables, RLS, policies, and row counts through MCP.
 
 Managers authenticate through KpnCompute/MJCC, the central identity source, via
 a short-lived one-time handoff. The live KpnCompute API is app-scoped to
-`marquee`; the server-only `mjcc-sso-exchange` Edge Function exchanges the
+`Scena`; the server-only `mjcc-sso-exchange` Edge Function exchanges the
 handoff and provisions a local Supabase Auth session using the immutable
 `external_identities` mapping. See [AUTH.md](AUTH.md) and
 [BUILD_PLAN.md](BUILD_PLAN.md) for the contract and implementation sequence.
