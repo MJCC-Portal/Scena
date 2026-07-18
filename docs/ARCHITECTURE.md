@@ -31,4 +31,9 @@ reviewed SQL, then verify tables, RLS, policies, and row counts through MCP.
 
 ## Manager-auth SSO (MJCC / KpnCompute)
 
-Managers authenticate through KpnCompute/MJCC, the central identity source, via a short-lived one-time handoff -- the same shape as the existing Lunchvoice SSO. `0002_marquee_mjcc_sso.sql` adds an immutable `mjcc_identities` mapping (keyed by `mjcc_user_id`, never email), a `mjcc_org_links` table so org/role are resolved server-side rather than trusted from the client, and a `mjcc_sso_handoffs` table enforcing one-time-use. The server-only `mjcc-sso-exchange` Edge Function performs the exchange and issues a local Supabase Auth session compatible with the existing client. See `docs/MJCC_SSO.md` for the full design, the explicit (and only partially confirmed) KpnCompute interface contract, and remaining integration work.
+Managers authenticate through KpnCompute/MJCC, the central identity source, via
+a short-lived one-time handoff. The live KpnCompute API is app-scoped to
+`marquee`; the server-only `mjcc-sso-exchange` Edge Function exchanges the
+handoff and provisions a local Supabase Auth session using the immutable
+`external_identities` mapping. See [AUTH.md](AUTH.md) and
+[BUILD_PLAN.md](BUILD_PLAN.md) for the contract and implementation sequence.

@@ -2,6 +2,9 @@
 
 Scena is the Marquee manager portal and kiosk display website.
 
+The governing implementation sequence is [docs/BUILD_PLAN.md](docs/BUILD_PLAN.md).
+Codex and Claude must follow its phase gates and definition of done.
+
 ## AI CLI workflow
 
 - Agy (Antigravity) is the primary project AI CLI. Refer to it as Agy; Gemini

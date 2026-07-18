@@ -29,3 +29,5 @@ MCP connection; the Supabase CLI is not part of the normal Scena workflow.
 The live SSO API is deployed, but the final browser redirect remains gated on
 assigning Scena a production website URL and setting `MARQUEE_SSO_URL` in the
 KpnCompute production service.
+
+The implementation sequence is maintained in [docs/BUILD_PLAN.md](docs/BUILD_PLAN.md).
