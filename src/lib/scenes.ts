@@ -1,12 +1,13 @@
 import { supabase } from "./supabase";
 
 export type MenuSceneConfig = { title: string; items: string[] };
+export type SceneConfig = { title?: string; items?: string[]; asset_id?: string };
 export type Scene = {
   id: string;
   org_id: string;
   name: string;
   scene_type: "menu" | "queue" | "slideshow" | "media" | "layout";
-  config: MenuSceneConfig;
+  config: SceneConfig;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -39,7 +40,23 @@ export async function createMenuScene(orgId: string, name: string, config: MenuS
   return data as Scene;
 }
 
-export async function updateMenuScene(sceneId: string, name: string, config: MenuSceneConfig, isActive: boolean): Promise<Scene> {
+export async function createSlideshowScene(orgId: string, name: string, assetId: string): Promise<Scene> {
+  const client = requireClient();
+  const { data: auth, error: authError } = await client.auth.getUser();
+  if (authError || !auth.user) throw new Error("Your session has expired");
+  const { data, error } = await client.from("scenes").insert({
+    org_id: orgId,
+    name: name.trim(),
+    scene_type: "slideshow",
+    config: { title: name.trim(), asset_id: assetId },
+    created_by: auth.user.id,
+    updated_by: auth.user.id,
+  }).select("*").single();
+  if (error || !data) throw new Error(error?.message || "Could not create scene");
+  return data as Scene;
+}
+
+export async function updateMenuScene(sceneId: string, name: string, config: SceneConfig, isActive: boolean): Promise<Scene> {
   const client = requireClient();
   const { data: auth, error: authError } = await client.auth.getUser();
   if (authError || !auth.user) throw new Error("Your session has expired");

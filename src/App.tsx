@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { exchangeMjccCode, loadManagerContext, supabase, type ManagerContext } from "./lib/supabase";
-import { createMenuScene, deleteScene, listScenes, updateMenuScene, type MenuSceneConfig, type Scene } from "./lib/scenes";
+import { createMenuScene, createSlideshowScene, deleteScene, listScenes, updateMenuScene, type Scene } from "./lib/scenes";
 import { listPresentationAssets, uploadPresentation, type PresentationAsset } from "./lib/presentations";
+import { getActiveSession, stopSession, takeSceneLive, type DisplaySession } from "./lib/sessions";
+import { assignScreen, claimScreen, clearAssignments, isOnline, listScreens, unpairScreen, type Screen } from "./lib/screens";
+import { Board, sceneTypeLabels } from "./boards";
 
 const mjccPortal = (import.meta.env.VITE_MJCC_PORTAL_URL as string | undefined) ?? "https://mjcc.kpnsolute.com";
 
 type View = "control" | "queue" | "scenes" | "decks" | "music";
-type PairedScreen = { name: string; code: string; sceneId: string; online: boolean };
 
 const roleLabels: Record<ManagerContext["membership"]["role"], string> = {
   owner: "Owner", admin: "Administrator", operator: "Operator", viewer: "Viewer",
@@ -30,6 +32,7 @@ const Icons = {
   trash: icon(<path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13" />),
   close: icon(<path d="M6 6l12 12M18 6L6 18" />),
   take: icon(<path d="M5 12h14M13 6l6 6-6 6" />),
+  stop: ficon(<rect x="6" y="6" width="12" height="12" rx="1.5" />),
   bell: icon(<path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0" />),
   chevron: icon(<path d="M6 9l6 6 6-6" />),
   screen: icon(<rect x="2" y="5" width="20" height="12" rx="2" />),
@@ -43,10 +46,6 @@ const Icons = {
   play: ficon(<path d="M8 5l11 7-11 7z" />),
 };
 
-const sceneTypeLabels: Record<Scene["scene_type"], string> = {
-  menu: "Menu board", queue: "Queue", slideshow: "Slideshow", media: "Media", layout: "Layout",
-};
-
 export function App() {
   const [user, setUser] = useState<Record<string, unknown> | null>(null);
   const [context, setContext] = useState<ManagerContext | null>(null);
@@ -56,9 +55,9 @@ export function App() {
   const [view, setView] = useState<View>("control");
   const [scenes, setScenes] = useState<Scene[]>([]);
   const [scenesLoading, setScenesLoading] = useState(true);
-  const [live, setLive] = useState<string | null>(null);
+  const [session, setSession] = useState<DisplaySession | null>(null);
+  const [screens, setScreens] = useState<Screen[]>([]);
   const [preview, setPreview] = useState<string | null>(null);
-  const [screens, setScreens] = useState<PairedScreen[]>([]);
   const [pairOpen, setPairOpen] = useState(false);
   const [serving, setServing] = useState(41);
   const [waiting, setWaiting] = useState(6);
@@ -116,13 +115,21 @@ export function App() {
   }, [user]);
 
   const refreshScenes = (orgId: string) => listScenes(orgId)
-    .then((next) => { setScenes(next); setLive((current) => current && next.some((s) => s.id === current) ? current : next.find((s) => s.is_active)?.id ?? next[0]?.id ?? null); })
+    .then(setScenes)
     .catch(() => toast("Could not load scenes"))
     .finally(() => setScenesLoading(false));
 
+  const refreshLive = (orgId: string) => Promise.all([getActiveSession(orgId), listScreens(orgId)])
+    .then(([nextSession, nextScreens]) => { setSession(nextSession); setScreens(nextScreens); })
+    .catch(() => {});
+
+  // Screens heartbeat + session state poll while a manager is signed in.
   useEffect(() => {
     if (!context) return;
     refreshScenes(context.organization.id);
+    refreshLive(context.organization.id);
+    const iv = setInterval(() => refreshLive(context.organization.id), 8000);
+    return () => clearInterval(iv);
   }, [context]);
 
   async function signOut() {
@@ -140,18 +147,29 @@ export function App() {
     <p className="fine">Managers sign in once through KpnCompute. Scena never stores a separate manager password.</p>
   </section></main>;
 
+  const orgId = context.organization.id;
   const canManage = context.membership.role !== "viewer";
-  const showing = preview ?? live;
-  const showingScene = scenes.find((s) => s.id === showing) ?? null;
-  const liveScreenCount = screens.filter((s) => s.online && s.sceneId === live).length;
+  const live = session?.current_scene_id ?? null;
+  const onlineScreens = screens.filter(isOnline);
 
-  function takeLive() {
+  async function takeLive() {
     if (!preview) return;
-    if (!screens.length) { toast("Pair a screen first — nothing is connected"); return; }
-    const name = scenes.find((s) => s.id === preview)?.name ?? "Scene";
-    setScreens(screens.map((s) => s.online ? { ...s, sceneId: preview } : s));
-    setLive(preview); setPreview(null);
-    toast(`${name} is live on ${screens.filter((s) => s.online).length} screen(s)`);
+    const scene = scenes.find((s) => s.id === preview);
+    if (!scene) return;
+    try {
+      await takeSceneLive(orgId, scene.id, scene.name);
+      await clearAssignments(orgId);
+      setPreview(null);
+      await refreshLive(orgId);
+      toast(onlineScreens.length
+        ? `${scene.name} is live on ${onlineScreens.length} screen${onlineScreens.length > 1 ? "s" : ""}`
+        : `${scene.name} is live — pair a screen to see it`);
+    } catch (err) { toast(err instanceof Error ? err.message : "Could not take the scene live"); }
+  }
+
+  async function endSession() {
+    try { await stopSession(orgId); await refreshLive(orgId); toast("Session stopped — screens are on standby"); }
+    catch (err) { toast(err instanceof Error ? err.message : "Could not stop the session"); }
   }
 
   const navGroups: Array<{ label: string; items: Array<{ id: View; label: string; icon: ReactNode; managerOnly?: boolean }> }> = [
@@ -171,7 +189,7 @@ export function App() {
       <div className="wordmark"><span className="bulbs" aria-hidden="true"><i /><i /><i /></span>SCENA</div>
       <div className="org">Tenant <b>{context.organization.name}</b> · {roleLabels[context.membership.role]} {Icons.chevron}</div>
       <div className="top-status">
-        <span><span className="dot ok" />{screens.filter((s) => s.online).length}/{screens.length} screens online</span>
+        <span><span className="dot ok" />{onlineScreens.length}/{screens.length} screens online</span>
         <span className="clock">{clock}</span>
       </div>
     </header>
@@ -184,74 +202,70 @@ export function App() {
         </div>)}
         <div className="rail-foot">
           <button className="nav-btn" onClick={signOut}>{Icons.logout}<span>Sign out</span></button>
-          <small>Scena v0.2<br />KpnCompute</small>
+          <small>Scena v0.3<br />KpnCompute</small>
         </div>
       </nav>
       <main className="main">
-        {view === "control" && <ControlView scenes={scenes} scenesLoading={scenesLoading} live={live} preview={preview} showingScene={showingScene} liveScreenCount={liveScreenCount} screens={screens} serving={serving} canManage={canManage}
-          onPick={(id) => setPreview(id === live ? null : id)} onTake={takeLive} onEdit={() => setView(canManage ? "scenes" : view)} onPair={() => setPairOpen(true)}
-          onAssign={(index, sceneId) => { setScreens(screens.map((s, i) => i === index ? { ...s, sceneId } : s)); toast(`${screens[index].name} → ${scenes.find((s) => s.id === sceneId)?.name ?? "scene"}`); }}
-          onUnpair={(index) => { const name = screens[index].name; setScreens(screens.filter((_, i) => i !== index)); toast(`${name} unpaired`); }} />}
+        {view === "control" && <ControlView scenes={scenes} scenesLoading={scenesLoading} live={live} preview={preview} session={session} screens={screens} serving={serving} canManage={canManage}
+          onPick={(id) => setPreview(id === live ? null : id)} onTake={takeLive} onStop={endSession} onEdit={() => setView(canManage ? "scenes" : view)} onPair={() => setPairOpen(true)}
+          onAssign={async (screen, sceneId) => {
+            try { await assignScreen(screen.id, sceneId); await refreshLive(orgId); toast(sceneId ? `${screen.label} → ${scenes.find((s) => s.id === sceneId)?.name ?? "scene"}` : `${screen.label} follows the live session`); }
+            catch (err) { toast(err instanceof Error ? err.message : "Could not assign the scene"); }
+          }}
+          onUnpair={async (screen) => {
+            try { await unpairScreen(screen.id); await refreshLive(orgId); toast(`${screen.label} unpaired`); }
+            catch (err) { toast(err instanceof Error ? err.message : "Could not unpair the screen"); }
+          }} />}
         {view === "queue" && <QueueView serving={serving} waiting={waiting}
-          onCall={() => { if (waiting > 0) { setServing(serving + 1); setWaiting(waiting - 1); toast(`Called ${String(serving + 1).padStart(3, "0")} — chime sent to boards`); } else toast("Queue is empty"); }}
+          onCall={() => { if (waiting > 0) { setServing(serving + 1); setWaiting(waiting - 1); toast(`Called ${String(serving + 1).padStart(3, "0")} — queue backend arrives in a later phase`); } else toast("Queue is empty"); }}
           onRecall={() => toast(`Recalled ${String(serving).padStart(3, "0")}`)} />}
-        {view === "scenes" && <ScenesView orgId={context.organization.id} canManage={canManage} scenes={scenes} loading={scenesLoading} onChanged={() => refreshScenes(context.organization.id)} toast={toast} />}
-        {view === "decks" && <DecksView orgId={context.organization.id} canManage={canManage} toast={toast} />}
+        {view === "scenes" && <ScenesView orgId={orgId} canManage={canManage} scenes={scenes} loading={scenesLoading} onChanged={() => { refreshScenes(orgId); refreshLive(orgId); }} toast={toast} />}
+        {view === "decks" && <DecksView orgId={orgId} canManage={canManage} toast={toast} onSceneCreated={() => refreshScenes(orgId)} />}
         {view === "music" && <MusicView toast={toast} />}
       </main>
     </div>
-    {pairOpen && <PairModal scenes={scenes} screens={screens} onCancel={() => setPairOpen(false)}
-      onPair={(screen) => { setScreens([...screens, screen]); setPairOpen(false); toast(`${screen.name} paired — the kiosk is now showing its scene`); }} toast={toast} />}
+    {pairOpen && <PairModal scenes={scenes} onCancel={() => setPairOpen(false)}
+      onPair={async (code, name, sceneId) => {
+        try {
+          await claimScreen(code, name, sceneId);
+          setPairOpen(false);
+          await refreshLive(orgId);
+          toast(`${name} paired — the kiosk switches over within a few seconds`);
+        } catch (err) { toast(err instanceof Error ? err.message : "Pairing failed"); }
+      }} />}
     <div className={toastMsg ? "toast show" : "toast"} role="status">{toastMsg}</div>
   </>;
 }
 
-/* ── Boards ── */
-
-function Board({ scene, serving }: { scene: Scene | null; serving: number }) {
-  if (!scene) return <div className="slide-board">Create a scene to light this board up</div>;
-  if (scene.scene_type === "menu") {
-    const config: MenuSceneConfig = scene.config ?? { title: "", items: [] };
-    const half = Math.ceil(config.items.length / 2);
-    const col = (items: string[]) => <div>{items.map((item, i) => {
-      const [name, price] = item.split("·").map((p) => p.trim());
-      return <div className="mi" key={i}><span>{name}</span>{price && <span>{price}</span>}</div>;
-    })}</div>;
-    return <div className="board"><div className="b-head">{config.title.toUpperCase()}</div>
-      <div className="menu-cols">{col(config.items.slice(0, half))}{col(config.items.slice(half))}</div></div>;
-  }
-  if (scene.scene_type === "queue") return <div className="queue-board"><div className="lbl">Now serving</div>
-    <div className="num">{String(serving).padStart(3, "0")}</div>
-    <div className="nxt">next · {[1, 2, 3].map((k) => String(serving + k).padStart(3, "0")).join(" · ")}</div></div>;
-  return <div className="slide-board">{scene.name} — {sceneTypeLabels[scene.scene_type]} scene</div>;
-}
-
 /* ── Control room ── */
 
-function ControlView({ scenes, scenesLoading, live, preview, showingScene, liveScreenCount, screens, serving, canManage, onPick, onTake, onEdit, onPair, onAssign, onUnpair }: {
-  scenes: Scene[]; scenesLoading: boolean; live: string | null; preview: string | null; showingScene: Scene | null; liveScreenCount: number; screens: PairedScreen[]; serving: number; canManage: boolean;
-  onPick: (id: string) => void; onTake: () => void; onEdit: () => void; onPair: () => void; onAssign: (index: number, sceneId: string) => void; onUnpair: (index: number) => void;
+function ControlView({ scenes, scenesLoading, live, preview, session, screens, serving, canManage, onPick, onTake, onStop, onEdit, onPair, onAssign, onUnpair }: {
+  scenes: Scene[]; scenesLoading: boolean; live: string | null; preview: string | null; session: DisplaySession | null; screens: Screen[]; serving: number; canManage: boolean;
+  onPick: (id: string) => void; onTake: () => void; onStop: () => void; onEdit: () => void; onPair: () => void; onAssign: (screen: Screen, sceneId: string | null) => void; onUnpair: (screen: Screen) => void;
 }) {
-  const zones = showingScene ? zonesFor(showingScene) : [];
+  const showing = preview ?? live;
+  const showingScene = scenes.find((s) => s.id === showing) ?? null;
+  const liveScreens = screens.filter((s) => isOnline(s) && (s.assigned_scene_id ?? live) === live && live);
   const statusText = preview ? "preview — not on screens yet"
-    : showingScene ? (liveScreenCount ? `live on ${liveScreenCount} screen${liveScreenCount > 1 ? "s" : ""}` : (screens.length ? "live · no screens assigned" : "live · no screens paired"))
-    : "no scenes yet";
+    : session && showingScene ? (liveScreens.length ? `live on ${liveScreens.length} screen${liveScreens.length > 1 ? "s" : ""}` : (screens.length ? "live · no screens online" : "live · no screens paired"))
+    : scenes.length ? "no session — preview a scene and take it live" : "no scenes yet";
   return <section>
     <div className="view-head"><h1>Control room</h1><p>Preview a scene, then take it live to your boards.</p></div>
     <div className="stage-grid">
       <div>
-        <div className={preview ? "monitor-wrap" : "monitor-wrap live"}>
+        <div className={!preview && session ? "monitor-wrap live" : "monitor-wrap"}>
           <div className="bulb-frame" aria-hidden="true" />
           <div className="monitor">
-            <div className={preview ? "tally pvw" : "tally live"}><span className="lamp" />{preview ? "PREVIEW" : "LIVE"}</div>
+            <div className={!preview && session ? "tally live" : "tally pvw"}><span className="lamp" />{!preview && session ? "LIVE" : "PREVIEW"}</div>
             <div className="monitor-content"><Board scene={showingScene} serving={serving} /></div>
           </div>
           <div className="monitor-bar">
             <span className="scene-name">{showingScene?.name ?? "No scene"}</span>
             <span className="on-screens">{statusText}</span>
             <span className="spacer" />
+            {canManage && session && !preview && <button className="btn danger" onClick={onStop}>{Icons.stop}Stop session</button>}
             {canManage && <button className="btn" onClick={onEdit}>Edit scene</button>}
-            {preview && <button className="btn gold" onClick={onTake}>{Icons.take}Take live</button>}
+            {canManage && preview && <button className="btn gold" onClick={onTake}>{Icons.take}Take live</button>}
           </div>
         </div>
         <div className="strip-label">Scenes</div>
@@ -265,23 +279,26 @@ function ControlView({ scenes, scenesLoading, live, preview, showingScene, liveS
       <div className="side-stack">
         <div className="panel">
           <h2>{Icons.screen}Screens{canManage && <button className="btn" onClick={onPair}>+ Pair</button>}</h2>
-          {screens.length === 0 ? <div className="empty">{Icons.screen}No screens paired yet.<br />Open the display URL on a kiosk, then enter its code here.</div>
-            : screens.map((s, index) => {
-              const isLive = s.online && s.sceneId === live;
-              return <div className="screen-row" key={s.code}>
-                <span className={"st " + (s.online ? (isLive ? "live" : "on") : "off")} />
-                <div className="meta"><b>{s.name}</b><span>{s.online ? (isLive ? "Live" : "Online") : "Offline"} · {s.code}</span></div>
-                <select aria-label={`Scene for ${s.name}`} value={s.sceneId} onChange={(e) => onAssign(index, e.target.value)}>
+          {screens.length === 0 ? <div className="empty">{Icons.screen}No screens paired yet.<br />Open <b>{window.location.origin}/#/display</b> on a kiosk, then enter its code here.</div>
+            : screens.map((s) => {
+              const online = isOnline(s);
+              const effective = s.assigned_scene_id ?? live;
+              const isLive = online && !!live && effective === live;
+              return <div className="screen-row" key={s.id}>
+                <span className={"st " + (online ? (isLive ? "live" : "on") : "off")} />
+                <div className="meta"><b>{s.label}</b><span>{online ? (isLive ? "Live" : "Online") : "Offline"}{s.assigned_scene_id ? " · pinned" : " · follows session"}</span></div>
+                <select aria-label={`Scene for ${s.label}`} value={s.assigned_scene_id ?? ""} disabled={!canManage} onChange={(e) => onAssign(s, e.target.value || null)}>
+                  <option value="">Follow session</option>
                   {scenes.map((sc) => <option key={sc.id} value={sc.id}>{sc.name}</option>)}
                 </select>
-                <button className="rm" aria-label={`Unpair ${s.name}`} onClick={() => onUnpair(index)}>{Icons.close}</button>
+                {canManage && <button className="rm" aria-label={`Unpair ${s.label}`} onClick={() => onUnpair(s)}>{Icons.close}</button>}
               </div>;
             })}
         </div>
         <div className="panel">
           <h2>{Icons.zones}Scene zones</h2>
-          {zones.length === 0 ? <div className="empty">{Icons.zones}Pick a scene to see its zones.</div>
-            : zones.map(([nm, src]) => <div className="zone-row" key={nm}>{Icons.frame}{nm}<span className="tag">{src}</span></div>)}
+          {showingScene ? zonesFor(showingScene).map(([nm, src]) => <div className="zone-row" key={nm}>{Icons.frame}{nm}<span className="tag">{src}</span></div>)
+            : <div className="empty">{Icons.zones}Pick a scene to see its zones.</div>}
         </div>
       </div>
     </div>
@@ -292,7 +309,7 @@ function zonesFor(scene: Scene): Array<[string, string]> {
   switch (scene.scene_type) {
     case "menu": return [["Menu grid", `menu:${scene.name.toLowerCase().replace(/\s+/g, "-")}`], ["Ticker", "text:hours"], ["Logo", "asset:logo"]];
     case "queue": return [["Now serving", "queue:station-1"], ["Up next", "queue:next-3"], ["Chime", "audio:bell"]];
-    case "slideshow": return [["Slides", "deck:pptx"], ["Clock", "widget:clock"]];
+    case "slideshow": return [["Slides", scene.config.asset_id ? `deck:${scene.config.asset_id.slice(0, 8)}` : "deck:pptx"], ["Clock", "widget:clock"]];
     case "media": return [["Player", "yt:iframe"], ["Track info", "yt:meta"]];
     default: return [["Layout", "layout:custom"]];
   }
@@ -343,11 +360,12 @@ function ScenesView({ orgId, canManage, scenes, loading, onChanged, toast }: { o
     setSelected({ id: "", org_id: orgId, name: "New menu", scene_type: "menu", config: { title: "Today's menu", items: ["Add your first item"] }, is_active: true, created_at: "", updated_at: "" });
   }
   async function save(scene: Scene) {
-    if (!scene.name.trim() || !scene.config.title.trim() || scene.config.items.some((item) => !item.trim())) { setError("Give the scene, title, and every menu item a value."); return; }
+    const items = scene.config.items ?? [];
+    if (!scene.name.trim() || !(scene.config.title ?? "").trim() || (scene.scene_type === "menu" && items.some((item) => !item.trim()))) { setError("Give the scene, title, and every menu item a value."); return; }
     setSaving(true); setError("");
     try {
-      const saved = scene.id ? await updateMenuScene(scene.id, scene.name, scene.config, scene.is_active) : await createMenuScene(orgId, scene.name, scene.config);
-      setSelected(saved); onChanged(); toast("Scene saved");
+      const saved = scene.id ? await updateMenuScene(scene.id, scene.name, scene.config, scene.is_active) : await createMenuScene(orgId, scene.name, { title: scene.config.title ?? scene.name, items });
+      setSelected(saved); onChanged(); toast("Scene saved — live screens update within seconds");
     } catch (err) { setError(err instanceof Error ? err.message : "Could not save scene"); } finally { setSaving(false); }
   }
   async function remove(scene: Scene) {
@@ -356,6 +374,7 @@ function ScenesView({ orgId, canManage, scenes, loading, onChanged, toast }: { o
     try { await deleteScene(scene.id); setSelected(null); onChanged(); toast("Scene deleted"); } catch (err) { setError(err instanceof Error ? err.message : "Could not delete scene"); } finally { setSaving(false); }
   }
 
+  const items = selected?.config.items ?? [];
   return <section>
     <div className="view-head"><h1>Scenes</h1><p>Boards your screens can show — menus, queues, slideshows.</p><span className="spacer" />
       {canManage && <button className="btn gold" onClick={newScene}>{Icons.plus}New scene</button>}</div>
@@ -374,13 +393,16 @@ function ScenesView({ orgId, canManage, scenes, loading, onChanged, toast }: { o
         <label className="form-label">Scene name</label>
         <input className="form-input" value={selected.name} onChange={(e) => setSelected({ ...selected, name: e.target.value })} disabled={!canManage || saving} />
         <label className="form-label">Display title</label>
-        <input className="form-input" value={selected.config.title} onChange={(e) => setSelected({ ...selected, config: { ...selected.config, title: e.target.value } })} disabled={!canManage || saving} />
-        <label className="form-label">Menu items — use "Name · Price"</label>
-        {selected.config.items.map((item, index) => <div className="item-line" key={index}>
-          <input className="form-input" value={item} onChange={(e) => setSelected({ ...selected, config: { ...selected.config, items: selected.config.items.map((c, i) => i === index ? e.target.value : c) } })} disabled={!canManage || saving} />
-          <button className="icon-button" onClick={() => setSelected({ ...selected, config: { ...selected.config, items: selected.config.items.filter((_, i) => i !== index) } })} disabled={!canManage || saving} aria-label="Remove item">{Icons.trash}</button>
-        </div>)}
-        <button className="add-item" onClick={() => setSelected({ ...selected, config: { ...selected.config, items: [...selected.config.items, ""] } })} disabled={!canManage || saving}>{Icons.plus}Add item</button>
+        <input className="form-input" value={selected.config.title ?? ""} onChange={(e) => setSelected({ ...selected, config: { ...selected.config, title: e.target.value } })} disabled={!canManage || saving} />
+        {selected.scene_type === "menu" && <>
+          <label className="form-label">Menu items — use "Name · Price"</label>
+          {items.map((item, index) => <div className="item-line" key={index}>
+            <input className="form-input" value={item} onChange={(e) => setSelected({ ...selected, config: { ...selected.config, items: items.map((c, i) => i === index ? e.target.value : c) } })} disabled={!canManage || saving} />
+            <button className="icon-button" onClick={() => setSelected({ ...selected, config: { ...selected.config, items: items.filter((_, i) => i !== index) } })} disabled={!canManage || saving} aria-label="Remove item">{Icons.trash}</button>
+          </div>)}
+          <button className="add-item" onClick={() => setSelected({ ...selected, config: { ...selected.config, items: [...items, ""] } })} disabled={!canManage || saving}>{Icons.plus}Add item</button>
+        </>}
+        {selected.scene_type === "slideshow" && <p className="muted" style={{ margin: "8px 0", fontSize: 12.5 }}>This scene plays an uploaded deck. Screens receive a short-lived signed link — the file itself stays private.</p>}
         <label className="toggle-line"><input type="checkbox" checked={selected.is_active} onChange={(e) => setSelected({ ...selected, is_active: e.target.checked })} disabled={!canManage || saving} /> Available for the control room</label>
         <div className="editor-actions">
           <button className="btn danger" onClick={() => remove(selected)} disabled={!canManage || saving || !selected.id}>Delete</button>
@@ -393,7 +415,7 @@ function ScenesView({ orgId, canManage, scenes, loading, onChanged, toast }: { o
 
 /* ── Decks ── */
 
-function DecksView({ orgId, canManage, toast }: { orgId: string; canManage: boolean; toast: (m: string) => void }) {
+function DecksView({ orgId, canManage, toast, onSceneCreated }: { orgId: string; canManage: boolean; toast: (m: string) => void; onSceneCreated: () => void }) {
   const [assets, setAssets] = useState<PresentationAsset[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -407,20 +429,28 @@ function DecksView({ orgId, canManage, toast }: { orgId: string; canManage: bool
     if (!file || uploading) return;
     setUploading(true);
     toast("Uploading — this may take a moment");
-    try { await uploadPresentation(file); await refresh(); toast(`${file.name} uploaded — conversion arrives in a later phase`); }
+    try { await uploadPresentation(file); await refresh(); toast(`${file.name} uploaded — make it a scene to put it on screen`); }
     catch (err) { toast(err instanceof Error ? err.message : "Upload failed"); }
     finally { setUploading(false); }
   }
 
+  async function makeScene(asset: PresentationAsset) {
+    try {
+      await createSlideshowScene(orgId, asset.original_filename.replace(/\.pptx$/i, ""), asset.id);
+      onSceneCreated();
+      toast("Scene created — preview it in the control room");
+    } catch (err) { toast(err instanceof Error ? err.message : "Could not create the scene"); }
+  }
+
   const badge = (status: PresentationAsset["status"]) =>
-    status === "ready" ? <span className="badge ready">READY</span>
-    : status === "failed" ? <span className="badge fail">FAILED</span>
+    status === "failed" ? <span className="badge fail">FAILED</span>
     : status === "processing" ? <span className="badge conv">CONVERTING</span>
-    : <span className="badge conv">{status === "pending_upload" ? "UPLOADING" : "UPLOADED"}</span>;
+    : status === "pending_upload" ? <span className="badge conv">UPLOADING</span>
+    : <span className="badge ready">READY</span>;
   const formatSize = (bytes: number | null) => bytes === null ? "" : bytes >= 1048576 ? ` · ${(bytes / 1048576).toFixed(1)} MB` : ` · ${Math.max(1, Math.round(bytes / 1024))} KB`;
 
   return <section>
-    <div className="view-head"><h1>Slide decks</h1><p>PowerPoints convert to slides automatically, then run as scenes.</p></div>
+    <div className="view-head"><h1>Slide decks</h1><p>Upload a PowerPoint, turn it into a scene, send it to your boards.</p></div>
     <button className={"dropzone" + (drag ? " drag" : "") + (!canManage || uploading ? " disabled" : "")}
       onClick={() => fileInput.current?.click()}
       onDragEnter={(e) => { e.preventDefault(); setDrag(true); }} onDragOver={(e) => { e.preventDefault(); setDrag(true); }}
@@ -429,7 +459,7 @@ function DecksView({ orgId, canManage, toast }: { orgId: string; canManage: bool
       aria-label="Upload a PowerPoint">
       {Icons.upload}
       <b>{uploading ? "Uploading…" : "Drop a PowerPoint here"}</b>
-      <span>.pptx up to 100 MB · converts to a board-ready slideshow</span>
+      <span>.pptx up to 100 MB · plays on your boards as a slideshow scene</span>
     </button>
     <input type="file" ref={fileInput} hidden accept=".pptx,application/vnd.openxmlformats-officedocument.presentationml.presentation" onChange={(e) => { upload(e.target.files?.[0]); e.target.value = ""; }} />
     {loading ? <div className="skeleton-list"><div className="skeleton-row" /><div className="skeleton-row" /></div>
@@ -440,7 +470,7 @@ function DecksView({ orgId, canManage, toast }: { orgId: string; canManage: bool
           <b>{asset.original_filename}</b>
           <span>{new Date(asset.created_at).toLocaleDateString()}{formatSize(asset.size_bytes)}</span>
           <div className="row">{badge(asset.status)}
-            {asset.status === "ready" && <button className="btn" onClick={() => toast("Deck-to-scene conversion arrives with the processing worker")}>Make scene</button>}
+            {canManage && (asset.status === "uploaded" || asset.status === "ready") && <button className="btn" onClick={() => makeScene(asset)}>Make scene</button>}
           </div>
         </div>
       </div>)}</div>}
@@ -504,20 +534,20 @@ function MusicView({ toast }: { toast: (m: string) => void }) {
 
 /* ── Pair modal ── */
 
-function PairModal({ scenes, screens, onCancel, onPair, toast }: { scenes: Scene[]; screens: PairedScreen[]; onCancel: () => void; onPair: (s: PairedScreen) => void; toast: (m: string) => void }) {
+function PairModal({ scenes, onCancel, onPair }: { scenes: Scene[]; onCancel: () => void; onPair: (code: string, name: string, sceneId: string | null) => void }) {
   const [code, setCode] = useState("");
   const [name, setName] = useState("");
-  const [sceneId, setSceneId] = useState(scenes[0]?.id ?? "");
-  function confirm() {
-    if (code.length !== 6) { toast("Enter the 6-digit code shown on the kiosk"); return; }
-    if (!name.trim()) { toast("Give the screen a name"); return; }
-    if (screens.some((s) => s.code === code)) { toast("That code is already paired"); return; }
-    onPair({ name: name.trim(), code, sceneId, online: true });
+  const [sceneId, setSceneId] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  async function confirm() {
+    setSubmitting(true);
+    await onPair(code, name, sceneId || null);
+    setSubmitting(false);
   }
   return <div className="modal-veil" onClick={(e) => { if (e.target === e.currentTarget) onCancel(); }}>
     <div className="modal" role="dialog" aria-modal="true" aria-labelledby="pair-title">
       <h3 id="pair-title">Pair a screen</h3>
-      <p className="hint">On the kiosk, open your display URL. It shows a 6-digit code. Enter it here to claim that screen.</p>
+      <p className="hint">On the kiosk, open <b>{window.location.origin}/#/display</b>. It shows a 6-digit code. Enter it here to claim that screen.</p>
       <label htmlFor="pair-code">Pairing code</label>
       <input className="code-input" id="pair-code" inputMode="numeric" maxLength={6} placeholder="000000" autoComplete="off" autoFocus
         value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))} />
@@ -525,11 +555,12 @@ function PairModal({ scenes, screens, onCancel, onPair, toast }: { scenes: Scene
       <input id="pair-name" placeholder="Front Counter Left" value={name} onChange={(e) => setName(e.target.value)} />
       <label htmlFor="pair-scene">Starting scene</label>
       <select id="pair-scene" value={sceneId} onChange={(e) => setSceneId(e.target.value)}>
+        <option value="">Follow the live session</option>
         {scenes.map((sc) => <option key={sc.id} value={sc.id}>{sc.name}</option>)}
       </select>
       <div className="m-actions">
         <button className="btn" onClick={onCancel}>Cancel</button>
-        <button className="btn gold" onClick={confirm}>Pair screen</button>
+        <button className="btn gold" onClick={confirm} disabled={submitting}>{submitting ? "Pairing…" : "Pair screen"}</button>
       </div>
     </div>
   </div>;
