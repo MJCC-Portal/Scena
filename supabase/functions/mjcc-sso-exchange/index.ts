@@ -3,7 +3,14 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const APP = "marquee";
 const ORG_SLUG = "mjcc";
 
+const CORS_HEADERS = {
+  "access-control-allow-origin": "*",
+  "access-control-allow-headers": "authorization, x-client-info, apikey, content-type",
+  "access-control-allow-methods": "POST, OPTIONS",
+};
+
 Deno.serve(async (req: Request) => {
+  if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS_HEADERS });
   if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405);
 
   try {
@@ -109,5 +116,8 @@ function required(name: string): string {
 }
 
 function json(body: unknown, status: number): Response {
-  return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json", "cache-control": "no-store" } });
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json", "cache-control": "no-store", ...CORS_HEADERS },
+  });
 }
