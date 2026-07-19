@@ -280,3 +280,15 @@ shell**. After the production URL is assigned, wire the final SSO callback,
 replace the temporary authenticated screen, add organization/role context,
 and then begin scene management. Do not start queue, slideshow, scheduling,
 or kiosk polish before the session-control contract is working.
+
+## 16. Recorded plan changes
+
+- 2026-07-18 (operator decision): the presentation upload API was pulled
+  forward from Phase 7. Delivered: private `presentations` Supabase Storage
+  bucket (100 MB, .pptx-only), `presentation_assets` registry table with
+  member-select-only RLS (all writes via service role), the
+  `presentation-upload` Edge Function (signed upload URL issue + server-side
+  completion recording size/checksum/status), and the manager-portal
+  Presentations view. PowerPoint *processing* (deck → display assets) and
+  the dedicated storage VM remain in Phase 7 and are unchanged; kiosk
+  display URLs still require the Phase 4/5 contracts.

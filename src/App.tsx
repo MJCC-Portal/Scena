@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import { exchangeMjccCode, loadManagerContext, supabase, type ManagerContext } from "./lib/supabase";
 import { createMenuScene, deleteScene, listScenes, updateMenuScene, type MenuSceneConfig, type Scene } from "./lib/scenes";
+import { listPresentationAssets, uploadPresentation, type PresentationAsset } from "./lib/presentations";
 
-const mjccPortal = (import.meta.env.VITE_MJCC_PORTAL_URL as string | undefined) ?? "https://mjcc-managements.onrender.com";
+const mjccPortal = (import.meta.env.VITE_MJCC_PORTAL_URL as string | undefined) ?? "https://mjcc.kpnsolute.com";
 
-type View = "overview" | "scenes" | "sessions" | "displays";
+type View = "overview" | "scenes" | "presentations" | "sessions" | "displays";
 
 const roleLabels: Record<ManagerContext["membership"]["role"], string> = {
   owner: "Owner", admin: "Administrator", operator: "Operator", viewer: "Viewer",
@@ -63,7 +64,7 @@ export function App() {
     <div className="mark">M</div><p className="eyebrow">MJCC OPERATIONS</p><h1>{user ? "Access unavailable" : "Sign in to Scena"}</h1>
     <p className="muted">{error || "Use your central MJCC account to manage display sessions and kiosk streams."}</p>
     {error && <div className="error">{error}</div>}
-    <button className="primary" onClick={() => window.location.assign(`${mjccPortal}/?launch=Scena`)}>Continue with MJCC <span>→</span></button>
+    <button className="primary" onClick={() => window.location.assign(`${mjccPortal}/?launch=marquee`)}>Continue with MJCC <span>→</span></button>
     <p className="fine">Managers sign in once through KpnCompute. Scena never stores a separate manager password.</p>
   </section></main>;
 
@@ -71,6 +72,7 @@ export function App() {
   const nav: Array<{ id: View; label: string; icon: string; managerOnly?: boolean }> = [
     { id: "overview", label: "Overview", icon: "⌂" },
     { id: "scenes", label: "Scenes", icon: "✦", managerOnly: true },
+    { id: "presentations", label: "Presentations", icon: "▤" },
     { id: "sessions", label: "Sessions", icon: "▶", managerOnly: true },
     { id: "displays", label: "Displays", icon: "▣" },
   ];
@@ -85,6 +87,7 @@ export function App() {
       <header className="topbar"><div><p className="eyebrow">MANAGER PORTAL</p><h2>{nav.find((item) => item.id === view)?.label}</h2></div><div className="profile-chip"><span className="avatar">{String(user.email ?? "M").slice(0, 1).toUpperCase()}</span><span>{String(user.email ?? "MJCC manager")}</span></div></header>
       {view === "overview" && <Overview context={context} canManage={canManage} onNavigate={setView} />}
       {view === "scenes" && <ScenesView orgId={context.organization.id} canManage={canManage} />}
+      {view === "presentations" && <PresentationsView orgId={context.organization.id} canManage={canManage} />}
       {view === "sessions" && <EmptyState title="Sessions" description="Session start/stop controls will connect to the live API next." action="Start session" disabled={!canManage} />}
       {view === "displays" && <EmptyState title="Displays" description="Connected kiosk monitoring will appear after session control is active." action="Connect display" disabled />}
     </section>
@@ -97,6 +100,29 @@ function Overview({ context, canManage, onNavigate }: { context: ManagerContext;
 
 function Stat({ label, value, note }: { label: string; value: string; note: string }) { return <div className="stat"><span>{label}</span><strong>{value}</strong><small>{note}</small></div>; }
 function EmptyState({ title, description, action, disabled }: { title: string; description: string; action: string; disabled: boolean }) { return <div className="content"><div className="empty-card"><div className="empty-icon">✦</div><h3>{title} is coming next</h3><p className="muted">{description}</p><button className="primary compact" disabled={disabled}>{action}</button></div></div>; }
+
+function PresentationsView({ orgId, canManage }: { orgId: string; canManage: boolean }) {
+  const [assets, setAssets] = useState<PresentationAsset[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState("");
+
+  const refresh = () => listPresentationAssets(orgId).then(setAssets).catch((err: unknown) => setError(err instanceof Error ? err.message : "Could not load presentations")).finally(() => setLoading(false));
+  useEffect(() => { refresh(); }, [orgId]);
+
+  async function upload(file: File | undefined) {
+    if (!file) return;
+    setUploading(true); setError("");
+    try { await uploadPresentation(file); await refresh(); } catch (err) { setError(err instanceof Error ? err.message : "Presentation upload failed"); } finally { setUploading(false); }
+  }
+
+  const statusLabels: Record<PresentationAsset["status"], string> = {
+    pending_upload: "Uploading…", uploaded: "Uploaded", processing: "Processing", ready: "Ready", failed: "Failed",
+  };
+  const formatSize = (bytes: number | null) => bytes === null ? "—" : bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
+
+  return <div className="content"><div className="scene-list-card"><div className="section-head"><div><p className="eyebrow">ASSETS</p><h3>Presentations</h3></div><label className={canManage && !uploading ? "primary compact upload-label" : "primary compact upload-label disabled"}>{uploading ? "Uploading…" : "Upload .pptx"}<input type="file" accept=".pptx,application/vnd.openxmlformats-officedocument.presentationml.presentation" hidden disabled={!canManage || uploading} onChange={(event) => { upload(event.target.files?.[0]); event.target.value = ""; }} /></label></div>{error && <div className="error scene-error">{error}</div>}{loading ? <p className="muted">Loading presentations…</p> : assets.length === 0 ? <div className="list-empty"><div className="empty-icon">▤</div><p>No presentations yet.</p><small>Upload a PowerPoint deck to prepare it for kiosk display.</small></div> : <div className="scene-list">{assets.map((asset) => <div key={asset.id} className="scene-row"><span className="scene-row-icon">▤</span><span><strong>{asset.original_filename}</strong><small>{statusLabels[asset.status]} · {formatSize(asset.size_bytes)} · {asset.created_at ? new Date(asset.created_at).toLocaleString() : ""}</small></span></div>)}</div>}</div></div>;
+}
 
 function ScenesView({ orgId, canManage }: { orgId: string; canManage: boolean }) {
   const [scenes, setScenes] = useState<Scene[]>([]);

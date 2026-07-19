@@ -19,6 +19,31 @@ Claude Code can load the project configuration from `.mcp.json`; authenticate
 or reload the MCP connection after setting the variables. Other MCP-capable
 clients should use the same project `.mcp.json` configuration.
 
+## Local development on Windows network storage
+
+The repository lives on an SMB share (mapped as `S:\Scena`). Windows refuses
+to load native binaries from network paths, so the toolchain is configured to
+avoid them:
+
+- `package.json` overrides `rollup` with `@rollup/wasm-node` (pure-JS/WASM
+  build, no `.node` DLL). Keep this override; removing it breaks
+  `npm.cmd run build` on the share.
+- esbuild still ships a native `esbuild.exe` that cannot spawn from the
+  share. Copy it to a local path once and point `ESBUILD_BINARY_PATH` at it:
+
+```powershell
+Copy-Item S:\Scena\node_modules\@esbuild\win32-x64\esbuild.exe $env:LOCALAPPDATA\scena-esbuild.exe -Force
+$env:ESBUILD_BINARY_PATH = "$env:LOCALAPPDATA\scena-esbuild.exe"
+```
+
+Then the standard commands work from the mapped drive:
+
+```powershell
+npm.cmd run dev     # local development server
+npm.cmd run build   # tsc -b && vite build
+npx.cmd tsc -b      # type check only
+```
+
 ## Project AI worker
 
 Agy (Antigravity) is the primary CLI AI for this project. Claude Code is the
