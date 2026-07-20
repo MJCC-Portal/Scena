@@ -1,0 +1,187 @@
+{
+  "generated": "2026-07-20",
+  "note": "Machine-readable inventory of every implemented Scena backend operation. 'test' values: 'vitest:<file>' = automated unit test in this repo's suite (45 base + 6 invalidation = 51 passing at last run); 'live-tx:<description>' = verified this session via a non-destructive, rolled-back SQL transaction against the live database (not part of `npm test`, documented in the session transcript); 'deno-check' = compiles/type-checks under `deno check`, no behavioral test; 'none' = implemented, not automatically tested.",
+  "edgeFunctions": [
+    {
+      "name": "mjcc-sso-exchange",
+      "method": "POST",
+      "auth": "none (public — the KpnCompute handoff code is the credential)",
+      "requiredRole": null,
+      "validator": "inline (code length 32-200)",
+      "serviceFunction": "self-contained",
+      "tablesAccessed": ["organizations", "external_identities", "organization_members", "auth.users"],
+      "successResponse": "{ access_token, refresh_token, expires_in, user }",
+      "errorCodes": ["invalid_request", "invalid_or_expired_handoff", "invalid_handoff", "organization_not_configured", "organization_suspended", "role_not_allowed"],
+      "test": "none (requires a live KpnCompute handoff; not mockable without KpnCompute test fixtures out of this repo's scope)"
+    },
+    {
+      "name": "screen-register",
+      "method": "POST",
+      "auth": "none (kiosk has no identity yet)",
+      "requiredRole": null,
+      "validator": "n/a (no request body)",
+      "serviceFunction": "self-contained",
+      "tablesAccessed": ["screens", "screen_pairing_codes"],
+      "successResponse": "{ screen_id, device_token, code, expires_in }",
+      "errorCodes": ["INTERNAL_ERROR"],
+      "test": "live-tx:register->pairing status verified this session; deno-check"
+    },
+    {
+      "name": "screen-claim",
+      "method": "POST",
+      "auth": "manager JWT",
+      "requiredRole": "operator",
+      "validator": "inline (requirePairingCode-equivalent, location_id, name)",
+      "serviceFunction": "self-contained",
+      "tablesAccessed": ["locations", "screen_pairing_codes", "screens"],
+      "successResponse": "{ screen: { id, name, org_id, location_id, status, claimed_at } }",
+      "errorCodes": ["VALIDATION_FAILED", "CROSS_ORG_ACCESS", "PAIRING_CODE_INVALID", "PAIRING_CODE_LOCKED", "PAIRING_CODE_CONSUMED", "PAIRING_CODE_EXPIRED"],
+      "test": "live-tx:full register->claim->ready lifecycle + code-reuse-blocked, verified this session; deno-check"
+    },
+    {
+      "name": "screen-credential-rotate",
+      "method": "POST",
+      "auth": "manager JWT",
+      "requiredRole": "operator",
+      "validator": "inline (screen_id)",
+      "serviceFunction": "self-contained",
+      "tablesAccessed": ["screens"],
+      "successResponse": "{ screen_id, device_token }",
+      "errorCodes": ["CROSS_ORG_ACCESS", "SCREEN_REVOKED", "INTERNAL_ERROR"],
+      "test": "live-tx:rotation + old-credential-rejected, verified this session; deno-check"
+    },
+    {
+      "name": "display-gateway",
+      "method": "POST",
+      "auth": "kiosk device token (not a Supabase session)",
+      "requiredRole": null,
+      "validator": "inline (device_token presence/length)",
+      "serviceFunction": "resolveDisplayState (supabase/functions/_shared/displayState.ts)",
+      "tablesAccessed": ["screens", "display_session_screens", "display_sessions", "display_layouts", "display_layout_tiles", "scenes", "menus", "menu_sections", "menu_items", "presentation_assets"],
+      "successResponse": "{status:'pending'} | {status:'standby',...} | {status:'showing', session, display_mode, viewport, rotation_degrees, layout, content_version, server_time, org_id}",
+      "errorCodes": ["DEVICE_CREDENTIAL_INVALID", "SCREEN_REVOKED"],
+      "test": "vitest:src/display/resolveDisplayState.test.ts (9 tests, all 4 display modes + standby reasons + content_version stability); deno-check. DB-fetch portion (fetchResolvedLayout/resolveSceneContent) not live-transaction-tested this session."
+    },
+    {
+      "name": "presentation-upload",
+      "method": "POST (action: create | complete)",
+      "auth": "manager JWT",
+      "requiredRole": "operator",
+      "validator": "inline (filename extension/length, asset_id)",
+      "serviceFunction": "createLxcJob / confirmLxcUpload (calls external LXC service)",
+      "tablesAccessed": ["presentation_assets"],
+      "successResponse": "create: { asset_id, upload_url, upload_method, source_key }; complete: { asset_id, status:'uploaded' }",
+      "errorCodes": ["VALIDATION_FAILED", "RESOURCE_NOT_FOUND"],
+      "test": "deno-check only. No mocked-LXC integration test written this session — flagged as a coverage gap, see final report."
+    },
+    {
+      "name": "presentation-callback",
+      "method": "POST",
+      "auth": "shared secret (X-Scena-Callback-Secret == SCENA_LXC_CALLBACK_SECRET)",
+      "requiredRole": null,
+      "validator": "inline (presentation_asset_id, outcome, manifest fields)",
+      "serviceFunction": "self-contained",
+      "tablesAccessed": ["presentation_assets"],
+      "successResponse": "{ asset_id, status } (idempotent: {..., idempotent:true} if already terminal)",
+      "errorCodes": ["UNAUTHENTICATED", "VALIDATION_FAILED", "RESOURCE_NOT_FOUND"],
+      "test": "deno-check only. No mocked-LXC integration test written this session — flagged as a coverage gap."
+    },
+    {
+      "name": "automations-run",
+      "method": "POST",
+      "auth": "shared secret (X-Scena-Callback-Secret == SCENA_AUTOMATIONS_RUN_SECRET)",
+      "requiredRole": null,
+      "validator": "n/a (no client-supplied body fields)",
+      "serviceFunction": "executeAutomation (supabase/functions/automations-run/index.ts)",
+      "tablesAccessed": ["display_automations", "display_sessions", "display_session_screens"],
+      "successResponse": "{ processed, results: [{ id, outcome: 'executed'|'skipped_raced'|'failed', error? }] }",
+      "errorCodes": ["UNAUTHENTICATED"],
+      "test": "live-tx:concurrent-claim race proven exactly-once (this session); deno-check. Individual action_type executions (start_session etc.) not each live-tested — they reuse the same writes covered by the session-workflow live-tx checks."
+    }
+  ],
+  "domainModules": {
+    "src/domain/organizations.ts": [
+      { "function": "listMembers", "tablesAccessed": ["organization_members"], "test": "none" },
+      { "function": "upsertMember", "tablesAccessed": ["organization_members"], "test": "none" },
+      { "function": "removeMember", "tablesAccessed": ["organization_members"], "test": "none" },
+      { "function": "getEntitlement", "tablesAccessed": ["organization_entitlements"], "test": "none" },
+      { "function": "getSessionScreenCapacity", "tablesAccessed": ["organization_entitlements", "display_session_screens"], "test": "none" }
+    ],
+    "src/domain/locations.ts": [
+      { "function": "listLocations", "tablesAccessed": ["locations"], "test": "none" },
+      { "function": "getLocation", "tablesAccessed": ["locations"], "test": "none" },
+      { "function": "createLocation", "tablesAccessed": ["locations"], "test": "none" },
+      { "function": "updateLocation", "tablesAccessed": ["locations"], "test": "none" },
+      { "function": "setLocationActive", "tablesAccessed": ["locations"], "test": "none" }
+    ],
+    "src/domain/menus.ts": [
+      { "function": "listMenus", "tablesAccessed": ["menus"], "test": "none" },
+      { "function": "createMenu", "tablesAccessed": ["menus"], "invalidation": "broadcastOrgInvalidation", "test": "none" },
+      { "function": "renameMenu", "tablesAccessed": ["menus"], "invalidation": "broadcastOrgInvalidation", "test": "none" },
+      { "function": "deleteMenu", "tablesAccessed": ["menus"], "invalidation": "broadcastOrgInvalidation", "test": "none" },
+      { "function": "createSection", "tablesAccessed": ["menu_sections"], "invalidation": "broadcastOrgInvalidation", "test": "none" },
+      { "function": "updateSection", "tablesAccessed": ["menu_sections"], "invalidation": "broadcastOrgInvalidation", "test": "none" },
+      { "function": "deleteSection", "tablesAccessed": ["menu_sections"], "invalidation": "broadcastOrgInvalidation", "test": "none" },
+      { "function": "reorderSections", "tablesAccessed": ["menu_sections"], "invalidation": "broadcastOrgInvalidation", "test": "none" },
+      { "function": "createItem", "tablesAccessed": ["menu_items"], "invalidation": "broadcastOrgInvalidation", "test": "none" },
+      { "function": "updateItem", "tablesAccessed": ["menu_items"], "invalidation": "broadcastOrgInvalidation", "test": "none" },
+      { "function": "deleteItem", "tablesAccessed": ["menu_items"], "invalidation": "broadcastOrgInvalidation", "test": "none" },
+      { "function": "setItemSoldOut", "tablesAccessed": ["menu_items"], "invalidation": "broadcastOrgInvalidation (via updateItem)", "test": "none" },
+      { "function": "reorderItems", "tablesAccessed": ["menu_items"], "invalidation": "broadcastOrgInvalidation", "test": "none" },
+      { "function": "getRenderableMenu", "tablesAccessed": ["menus", "menu_sections", "menu_items"], "test": "none (exercised indirectly by resolveSceneContent's Deno twin, deno-checked)" }
+    ],
+    "src/domain/scenes.ts": [
+      { "function": "listScenes", "tablesAccessed": ["scenes"], "test": "none" },
+      { "function": "createMenuScene", "tablesAccessed": ["scenes"], "invalidation": "broadcastOrgInvalidation", "test": "none" },
+      { "function": "createPresentationScene", "tablesAccessed": ["scenes", "presentation_assets"], "invalidation": "broadcastOrgInvalidation", "test": "none" },
+      { "function": "updateScene", "tablesAccessed": ["scenes"], "invalidation": "broadcastOrgInvalidation", "test": "none" },
+      { "function": "deleteScene", "tablesAccessed": ["scenes"], "invalidation": "broadcastOrgInvalidation", "test": "none" },
+      { "function": "resolveSceneContent", "tablesAccessed": ["menus", "menu_sections", "menu_items", "presentation_assets"], "test": "covered structurally by resolveDisplayState.test.ts's tile.content contract; not directly unit-tested" }
+    ],
+    "src/domain/layouts.ts": [
+      { "function": "listLayouts", "tablesAccessed": ["display_layouts"], "test": "none" },
+      { "function": "createLayout", "tablesAccessed": ["display_layouts"], "invalidation": "broadcastOrgInvalidation", "test": "none" },
+      { "function": "updateLayout", "tablesAccessed": ["display_layouts"], "invalidation": "broadcastOrgInvalidation", "test": "none" },
+      { "function": "deleteLayout", "tablesAccessed": ["display_layouts"], "invalidation": "broadcastOrgInvalidation", "test": "none" },
+      { "function": "duplicateLayout", "tablesAccessed": ["display_layouts", "display_layout_tiles"], "invalidation": "broadcastOrgInvalidation", "test": "none" },
+      { "function": "getRenderableLayout", "tablesAccessed": ["display_layouts", "display_layout_tiles"], "test": "none" },
+      { "function": "addTile", "tablesAccessed": ["display_layout_tiles"], "invalidation": "broadcastOrgInvalidation", "validator": "validateTileGeometry (x/y/width/height percent bounds)", "test": "geometry bound logic shares requirePercent, covered by vitest:src/shared/validation.test.ts" },
+      { "function": "updateTile", "tablesAccessed": ["display_layout_tiles"], "invalidation": "broadcastOrgInvalidation", "test": "none" },
+      { "function": "removeTile", "tablesAccessed": ["display_layout_tiles"], "invalidation": "broadcastOrgInvalidation", "test": "none" },
+      { "function": "reorderTileLayers", "tablesAccessed": ["display_layout_tiles"], "invalidation": "broadcastOrgInvalidation", "test": "none" }
+    ],
+    "src/domain/screens.ts": [
+      { "function": "listScreens", "tablesAccessed": ["screens"], "test": "none" },
+      { "function": "listAvailableScreens", "tablesAccessed": ["screens"], "test": "none" },
+      { "function": "renameScreen", "tablesAccessed": ["screens"], "invalidation": "broadcastOrgInvalidation", "test": "none" },
+      { "function": "reassignScreenLocation", "tablesAccessed": ["screens"], "invalidation": "broadcastOrgInvalidation", "test": "none" },
+      { "function": "revokeScreen", "tablesAccessed": ["screens"], "invalidation": "broadcastOrgInvalidation", "test": "none" }
+    ],
+    "src/domain/sessions.ts": [
+      { "function": "listSessions", "tablesAccessed": ["display_sessions"], "test": "none" },
+      { "function": "getSession", "tablesAccessed": ["display_sessions", "display_session_screens"], "test": "none" },
+      { "function": "createDraftSession", "tablesAccessed": ["display_sessions"], "test": "live-tx:draft-required trigger message verified" },
+      { "function": "renameSession", "tablesAccessed": ["display_sessions"], "test": "none" },
+      { "function": "deleteDraftSession", "tablesAccessed": ["display_sessions"], "test": "none" },
+      { "function": "setDisplayMode", "tablesAccessed": ["display_sessions"], "invalidation": "broadcastOrgInvalidation", "test": "live-tx:display_sessions_check constraint message verified" },
+      { "function": "startSession", "tablesAccessed": ["display_sessions"], "invalidation": "broadcastOrgInvalidation", "test": "error mapping (SESSION_NOT_DRAFT) covered by vitest:src/shared/errors.test.ts" },
+      { "function": "stopSession", "tablesAccessed": ["display_sessions"], "invalidation": "broadcastOrgInvalidation", "test": "none" },
+      { "function": "addScreenToSession", "tablesAccessed": ["display_session_screens"], "invalidation": "broadcastOrgInvalidation", "test": "live-tx:entitlement-limit trigger message verified" },
+      { "function": "updateSessionScreen", "tablesAccessed": ["display_session_screens"], "invalidation": "broadcastOrgInvalidation", "test": "none" },
+      { "function": "removeScreenFromSession", "tablesAccessed": ["display_session_screens"], "invalidation": "broadcastOrgInvalidation", "test": "none" },
+      { "function": "setPrimaryScreen", "tablesAccessed": ["display_session_screens"], "invalidation": "broadcastOrgInvalidation", "test": "none" }
+    ],
+    "src/domain/automations.ts": [
+      { "function": "listAutomations", "tablesAccessed": ["display_automations"], "test": "none" },
+      { "function": "createAutomation", "tablesAccessed": ["display_automations"], "validator": "validateActionShape + requireCronOrOnce", "test": "requireCronOrOnce covered by vitest:src/shared/validation.test.ts" },
+      { "function": "updateAutomation", "tablesAccessed": ["display_automations"], "test": "none" },
+      { "function": "disableAutomation", "tablesAccessed": ["display_automations"], "test": "none" }
+    ]
+  },
+  "invalidationCoverage": {
+    "strategy": "C — trusted invalidation broadcast (Realtime Broadcast, not postgres_changes; see docs/DATABASE_SCHEMA.md §7)",
+    "coveredTables": ["menus", "menu_sections", "menu_items", "scenes", "display_layouts", "display_layout_tiles", "screens (rename/reassign/revoke)", "display_sessions (mode/start/stop)", "display_session_screens (add/update/remove/primary)", "presentation_assets (ready transition via presentation-callback)", "display_automations (post-execution, via automations-run)"],
+    "deliberatelyNotBroadcast": ["locations (not rendered on any kiosk)", "organization_members / organization_entitlements (not rendered)", "draft-session mutations before activation (no kiosk can be resolving a draft)", "presentation_assets 'failed' transition (no screen was ever showing not-yet-ready content, so nothing is stale)"],
+    "backstop": "4-second interval poll in src/Display.tsx runs unconditionally regardless of broadcast delivery — recovers any missed/dropped event within one interval."
+  }
+}

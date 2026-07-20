@@ -36,8 +36,9 @@ Deno.serve(async (req: Request) => {
       return json({ error: "invalid_handoff" }, 401);
     }
 
-    const { data: org, error: orgError } = await admin.from("organizations").select("id").eq("slug", ORG_SLUG).single();
+    const { data: org, error: orgError } = await admin.from("organizations").select("id, status").eq("slug", ORG_SLUG).single();
     if (orgError || !org) return json({ error: "organization_not_configured" }, 503);
+    if (org.status !== "active") return json({ error: "organization_suspended" }, 403);
 
     const externalId = String(identity.mjcc_user_id);
     const { data: existing, error: lookupError } = await admin
@@ -58,6 +59,12 @@ Deno.serve(async (req: Request) => {
       const { data: authUser, error: userError } = await admin.auth.admin.getUserById(userId);
       if (userError || !authUser.user?.email) throw new Error("local auth user missing");
       loginEmail = authUser.user.email;
+      // Refresh the audit mirror only — the identity mapping itself is
+      // immutable (enforced by external_identities_immutable_mapping).
+      await admin.from("external_identities")
+        .update({ role_snapshot: role, last_login_at: new Date().toISOString() })
+        .eq("provider", "mjcc")
+        .eq("external_user_id", externalId);
     } else {
       loginEmail = `mjcc-${externalId}@sso.invalid`;
       const created = await admin.auth.admin.createUser({
@@ -73,6 +80,7 @@ Deno.serve(async (req: Request) => {
         external_user_id: externalId,
         user_id: userId,
         role_snapshot: role,
+        last_login_at: new Date().toISOString(),
       });
       if (identityError) throw identityError;
     }

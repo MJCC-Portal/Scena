@@ -1,13 +1,15 @@
 // Scena kiosk display — the site a screen opens at /#/display.
 //
-// Boot: get a device token + 6-digit code from the gateway, show the
-// code, and poll until a manager claims it. Claimed: poll state every
-// few seconds and render the effective scene full-screen. Debug overlay
-// (press D, or open with ?debug): FPS, device, network, poll health.
+// Minimal functional harness (per this rebuild's scope: backend + kiosk
+// wiring, not visual polish). Boot: register a device credential + show
+// the 6-digit pairing code, poll until claimed. Claimed: poll
+// display-state every few seconds and render whatever layout/tiles come
+// back as plain positioned boxes — enough to prove pairing, display-mode
+// resolution, realtime-driven refresh, and offline caching all work.
+// Debug overlay (press D, or open with ?debug): poll health, cache state.
 
 import { useEffect, useRef, useState } from "react";
-import { forgetDevice, pairInit, pollState, storedToken, type DisplayState } from "./lib/display";
-import { Board } from "./boards";
+import { forgetDevice, pollState, registerDevice, storedToken, subscribeToOrgInvalidation, type DisplayState } from "./lib/display";
 
 const POLL_MS = 4000;
 
@@ -15,41 +17,70 @@ export function DisplayApp() {
   const [state, setState] = useState<DisplayState | null>(null);
   const [pairCode, setPairCode] = useState<string | null>(null);
   const [pollError, setPollError] = useState(0);
+  const [fromCache, setFromCache] = useState(false);
   const [lastPoll, setLastPoll] = useState<{ at: number; ms: number } | null>(null);
   const [debug, setDebug] = useState(() => new URLSearchParams(window.location.search).has("debug"));
-  const pairing = useRef(false);
+  const registering = useRef(false);
 
-  async function ensurePaired() {
-    if (pairing.current) return;
-    pairing.current = true;
+  async function ensureRegistered() {
+    if (registering.current) return;
+    registering.current = true;
     try {
-      const next = await pairInit();
+      const next = await registerDevice();
       setPairCode(next.code);
       setState({ status: "pending" });
-    } catch { setPollError((n) => n + 1); }
-    finally { pairing.current = false; }
+    } catch {
+      setPollError((n) => n + 1);
+    } finally {
+      registering.current = false;
+    }
   }
 
   useEffect(() => {
     let active = true;
     async function tick() {
-      if (!storedToken()) { await ensurePaired(); return; }
+      if (!storedToken()) { await ensureRegistered(); return; }
       const started = performance.now();
       try {
-        const next = await pollState();
+        const { state: next, fromCache: cached } = await pollState();
         if (!active) return;
         setLastPoll({ at: Date.now(), ms: Math.round(performance.now() - started) });
-        setPollError(0);
-        if (next.status === "unknown_device" || next.status === "pair_expired" || next.status === "revoked") {
-          forgetDevice(); setPairCode(null); setState(next); await ensurePaired(); return;
+        setFromCache(cached);
+        setPollError(cached ? (n) => n + 1 : 0);
+        if (next.status === "unknown_device" || next.status === "revoked") {
+          setPairCode(null);
+          setState(next);
+          await ensureRegistered();
+          return;
         }
         setState(next);
-      } catch { if (active) setPollError((n) => n + 1); }
+      } catch {
+        if (active) setPollError((n) => n + 1);
+      }
     }
     tick();
     const iv = setInterval(tick, POLL_MS);
     return () => { active = false; clearInterval(iv); };
   }, []);
+
+  // Realtime hint: subscribed to the screen's org-scoped invalidation
+  // broadcast (see src/lib/display.ts#subscribeToOrgInvalidation). This is
+  // Realtime *Broadcast*, not `postgres_changes` — this kiosk connection
+  // has no Supabase session, so it holds no RLS grant to receive
+  // `postgres_changes` events on any table at all (a prior version of
+  // this file subscribed that way and silently never fired). The
+  // broadcast payload is untrusted and carries no data; it only triggers
+  // an immediate authoritative re-fetch via display-gateway, same as
+  // every interval poll. Missing org_id (not yet claimed) means there's
+  // nothing to subscribe to yet — the 4s interval poll keeps working
+  // regardless and will pick up org_id the moment the screen is claimed.
+  const orgId = state && "org_id" in state ? state.org_id : null;
+  useEffect(() => {
+    if (!orgId) return;
+    return subscribeToOrgInvalidation(orgId, () => {
+      pollState().then(({ state: s, fromCache: cached }) => { setState(s); setFromCache(cached); }).catch(() => {});
+    });
+  }, [orgId]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key.toLowerCase() === "d") setDebug((d) => !d); };
@@ -61,7 +92,7 @@ export function DisplayApp() {
 
   return <div className="display-root">
     {state?.status === "showing"
-      ? <Board scene={state.scene} slideshowUrl={state.slideshow_url} />
+      ? <LayoutRenderer state={state} />
       : state?.status === "standby"
       ? <div className="display-center">
           <div className="wordmark"><span className="bulbs" aria-hidden="true"><i /><i /><i /></span>SCENA</div>
@@ -72,16 +103,74 @@ export function DisplayApp() {
           {pairCode ? <>
             <p className="display-dim">Enter this code in the Scena control room to pair this screen</p>
             <div className="pair-code">{pairCode}</div>
-            <p className="display-faint">Codes rotate every 10 minutes · this screen stays unpaired until claimed</p>
+            <p className="display-faint">This code expires in 30 minutes · this screen stays unpaired until claimed</p>
           </> : <p className="display-dim">Connecting…</p>}
         </div>}
-    {offline && <div className="display-offline">Reconnecting…</div>}
-    {debug && <DebugOverlay state={state} lastPoll={lastPoll} pollError={pollError} />}
+    {offline && <div className="display-offline">{fromCache ? "Reconnecting — showing cached content" : "Reconnecting…"}</div>}
+    {debug && <DebugOverlay state={state} lastPoll={lastPoll} pollError={pollError} fromCache={fromCache} />}
     {!debug && <div className="debug-hint">press D for diagnostics</div>}
   </div>;
 }
 
-function DebugOverlay({ state, lastPoll, pollError }: { state: DisplayState | null; lastPoll: { at: number; ms: number } | null; pollError: number }) {
+/** Plain positioned-box renderer — proves layout/tile/viewport/rotation
+ * resolution end to end without investing in kiosk visual polish. */
+function LayoutRenderer({ state }: { state: Extract<DisplayState, { status: "showing" }> }) {
+  const { layout, viewport, rotation_degrees } = state;
+  return <div
+    className="layout-canvas"
+    style={{
+      position: "relative",
+      width: "100vw",
+      height: "100vh",
+      background: layout.background_color,
+      overflow: "hidden",
+      transform: rotation_degrees ? `rotate(${rotation_degrees}deg)` : undefined,
+      clipPath: `inset(${viewport.y}% ${100 - viewport.x - viewport.width}% ${100 - viewport.y - viewport.height}% ${viewport.x}%)`,
+    }}
+  >
+    {layout.tiles.filter((t) => t.is_visible).map((tile) => (
+      <div
+        key={tile.id}
+        style={{
+          position: "absolute",
+          left: `${tile.x_percent}%`,
+          top: `${tile.y_percent}%`,
+          width: `${tile.width_percent}%`,
+          height: `${tile.height_percent}%`,
+          zIndex: tile.z_index,
+          overflow: "auto",
+          color: "#fff",
+          fontFamily: "system-ui, sans-serif",
+          padding: 12,
+        }}
+      >
+        <TileContent content={tile.content} />
+      </div>
+    ))}
+  </div>;
+}
+
+function TileContent({ content }: { content: unknown }) {
+  const c = content as { scene_type?: string; menu?: { name: string; sections: Array<{ name: string; items: Array<{ name: string; price: number }> }> }; manifest_key?: string; slide_count?: number } | null;
+  if (!c) return null;
+  if (c.scene_type === "menu" && c.menu) {
+    return <div>
+      <h2 style={{ margin: "0 0 8px" }}>{c.menu.name}</h2>
+      {c.menu.sections.map((section) => <div key={section.name} style={{ marginBottom: 12 }}>
+        <h3 style={{ margin: "0 0 4px", opacity: 0.8 }}>{section.name}</h3>
+        {section.items.map((item) => <div key={item.name} style={{ display: "flex", justifyContent: "space-between" }}>
+          <span>{item.name}</span><span>${item.price.toFixed(2)}</span>
+        </div>)}
+      </div>)}
+    </div>;
+  }
+  if (c.scene_type === "powerpoint") {
+    return <div>Presentation ready — {c.slide_count} slide{c.slide_count === 1 ? "" : "s"} (manifest {c.manifest_key})</div>;
+  }
+  return null;
+}
+
+function DebugOverlay({ state, lastPoll, pollError, fromCache }: { state: DisplayState | null; lastPoll: { at: number; ms: number } | null; pollError: number; fromCache: boolean }) {
   const [fps, setFps] = useState(0);
   const [now, setNow] = useState(Date.now());
   const bootedAt = useRef(Date.now());
@@ -105,18 +194,17 @@ function DebugOverlay({ state, lastPoll, pollError }: { state: DisplayState | nu
   const rows: Array<[string, string]> = [
     ["fps", String(fps)],
     ["status", state?.status ?? "booting"],
-    ["scene", state?.status === "showing" ? `${state.scene.name} (${state.scene.scene_type})` : "—"],
-    ["screen", state?.status === "showing" || state?.status === "standby" ? state.screen_name : "unpaired"],
+    ["mode", state?.status === "showing" ? state.display_mode : "—"],
+    ["content version", state?.status === "showing" ? state.content_version.slice(0, 24) + "…" : "—"],
+    ["cache", fromCache ? "SERVING CACHED STATE" : "live"],
     ["poll", lastPoll ? `${lastPoll.ms}ms · ${pollAge}s ago` : "—"],
     ["poll errors", String(pollError)],
     ["uptime", `${Math.floor(uptime / 60)}m ${uptime % 60}s`],
     ["resolution", `${window.screen.width}×${window.screen.height} @ ${window.devicePixelRatio}x`],
-    ["viewport", `${window.innerWidth}×${window.innerHeight}`],
     ["cpu cores", String(navigator.hardwareConcurrency ?? "?")],
     ["memory", nav.deviceMemory ? `≥${nav.deviceMemory} GB` : "n/a"],
     ["network", nav.connection ? `${nav.connection.effectiveType ?? "?"} · ${nav.connection.downlink ?? "?"} Mbps` : navigator.onLine ? "online" : "offline"],
     ["device token", token ? `…${token.slice(-8)}` : "none"],
-    ["user agent", navigator.userAgent.slice(0, 64)],
   ];
   return <div className="debug-overlay">
     <div className="debug-title">SCENA DISPLAY DIAGNOSTICS</div>

@@ -1,130 +1,108 @@
-// Scena presentation upload API.
+// Scena presentation upload API — LXC integration boundary.
 //
-// Managers (owner/admin/operator) request a short-lived signed upload URL
-// for the private "presentations" bucket, upload the .pptx directly from
-// the browser, then confirm completion so the registry row records size,
-// checksum, and processing status. Clients never receive service
-// credentials and never write presentation_assets directly.
+// PowerPoint source files live on the private LXC presentation-processing
+// service, never in this Supabase project's storage. This function only
+// registers metadata and brokers a signed job with the LXC service; the
+// browser uploads bytes directly to whatever URL the LXC job hands back.
+// Processing completion/failure arrives asynchronously via
+// presentation-callback (a separate, LXC-authenticated function) — this
+// function never marks an asset 'ready' itself.
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { serveJson, json, requiredEnv } from "../_shared/http.ts";
+import { adminClient } from "../_shared/adminClient.ts";
+import { requireManager } from "../_shared/managerAuth.ts";
+import { ApiError } from "../_shared/errors.ts";
 
-const BUCKET = "presentations";
 const PPTX_MIME = "application/vnd.openxmlformats-officedocument.presentationml.presentation";
-const MAX_SIZE_BYTES = 104857600; // keep in sync with the bucket file_size_limit
+const PPT_MIME = "application/vnd.ms-powerpoint";
+const MAX_SIZE_BYTES = 104857600;
 
-Deno.serve(async (req: Request) => {
-  if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405);
+serveJson(async (req) => {
+  const admin = adminClient();
+  const manager = await requireManager(admin, req, { minRole: "operator" });
+  const body = (await req.json()) as Record<string, unknown>;
+  const action = typeof body.action === "string" ? body.action : "";
 
-  try {
-    const supabaseUrl = required("SUPABASE_URL");
-    const serviceKey = required("SUPABASE_SERVICE_ROLE_KEY");
-    const admin = createClient(supabaseUrl, serviceKey, { auth: { autoRefreshToken: false, persistSession: false } });
-
-    const jwt = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
-    if (!jwt) return json({ error: "unauthorized" }, 401);
-    const { data: auth, error: authError } = await admin.auth.getUser(jwt);
-    if (authError || !auth.user) return json({ error: "unauthorized" }, 401);
-    const userId = auth.user.id;
-
-    const body = await req.json() as Record<string, unknown>;
-    const action = typeof body.action === "string" ? body.action : "";
-
-    const { data: membership, error: memberError } = await admin
-      .from("organization_members")
-      .select("org_id, role")
-      .eq("user_id", userId)
-      .limit(1)
-      .maybeSingle();
-    if (memberError) throw memberError;
-    if (!membership) return json({ error: "no_organization_access" }, 403);
-    if (!["owner", "admin", "operator"].includes(String(membership.role))) {
-      return json({ error: "role_not_allowed" }, 403);
+  if (action === "create") {
+    const filename = typeof body.filename === "string" ? body.filename.trim() : "";
+    if (!filename || filename.length > 255 || !/\.pptx?$/i.test(filename)) {
+      throw ApiError.validation("filename must end with .ppt or .pptx.", { field: "filename" });
     }
-    const orgId = String(membership.org_id);
+    const mimeType = filename.toLowerCase().endsWith(".pptx") ? PPTX_MIME : PPT_MIME;
 
-    if (action === "create") {
-      const filename = typeof body.filename === "string" ? body.filename.trim() : "";
-      if (!filename || filename.length > 255 || !/\.pptx$/i.test(filename)) {
-        return json({ error: "invalid_filename" }, 400);
-      }
-      const sceneId = typeof body.scene_id === "string" && body.scene_id ? body.scene_id : null;
-      if (sceneId) {
-        const { data: scene, error: sceneError } = await admin
-          .from("scenes").select("id").eq("id", sceneId).eq("org_id", orgId).maybeSingle();
-        if (sceneError) throw sceneError;
-        if (!scene) return json({ error: "scene_not_found" }, 404);
-      }
+    const { data: asset, error: insertError } = await admin
+      .from("presentation_assets")
+      .insert({ org_id: manager.orgId, original_filename: filename, mime_type: mimeType, status: "pending_upload", uploaded_by: manager.userId })
+      .select("id")
+      .single();
+    if (insertError) throw ApiError.internal(insertError.message);
 
-      const assetId = crypto.randomUUID();
-      const storagePath = `${orgId}/${assetId}.pptx`;
-      const { error: insertError } = await admin.from("presentation_assets").insert({
-        id: assetId,
-        org_id: orgId,
-        scene_id: sceneId,
-        storage_path: storagePath,
-        original_filename: filename,
-        mime_type: PPTX_MIME,
-        status: "pending_upload",
-        uploaded_by: userId,
-      });
-      if (insertError) throw insertError;
+    const job = await createLxcJob({ assetId: asset.id, orgId: manager.orgId, filename, mimeType });
 
-      const { data: signed, error: signError } = await admin.storage.from(BUCKET).createSignedUploadUrl(storagePath);
-      if (signError || !signed) throw signError ?? new Error("could not create signed upload url");
+    const { error: updateError } = await admin.from("presentation_assets").update({ lxc_source_key: job.source_key }).eq("id", asset.id);
+    if (updateError) throw ApiError.internal(updateError.message);
 
-      return json({ asset_id: assetId, path: signed.path, token: signed.token }, 200);
-    }
-
-    if (action === "complete") {
-      const assetId = typeof body.asset_id === "string" ? body.asset_id : "";
-      const checksum = typeof body.checksum_sha256 === "string" ? body.checksum_sha256.toLowerCase() : "";
-      if (!assetId) return json({ error: "invalid_request" }, 400);
-      if (!/^[0-9a-f]{64}$/.test(checksum)) return json({ error: "invalid_checksum" }, 400);
-
-      const { data: asset, error: assetError } = await admin
-        .from("presentation_assets")
-        .select("id, org_id, storage_path, status")
-        .eq("id", assetId)
-        .eq("org_id", orgId)
-        .maybeSingle();
-      if (assetError) throw assetError;
-      if (!asset) return json({ error: "asset_not_found" }, 404);
-      if (asset.status !== "pending_upload") return json({ error: "asset_not_pending" }, 409);
-
-      // Confirm the object actually landed in the private bucket and read
-      // its stored size; trust storage, not the client, for size.
-      const folder = String(asset.storage_path).split("/").slice(0, -1).join("/");
-      const objectName = String(asset.storage_path).split("/").at(-1) ?? "";
-      const { data: objects, error: listError } = await admin.storage.from(BUCKET).list(folder, { search: objectName });
-      if (listError) throw listError;
-      const stored = (objects ?? []).find((entry) => entry.name === objectName);
-      if (!stored) return json({ error: "object_not_uploaded" }, 409);
-      const sizeBytes = Number(stored.metadata?.size ?? 0);
-      if (!sizeBytes || sizeBytes > MAX_SIZE_BYTES) return json({ error: "object_invalid_size" }, 409);
-
-      const { error: updateError } = await admin
-        .from("presentation_assets")
-        .update({ status: "uploaded", size_bytes: sizeBytes, checksum_sha256: checksum, updated_at: new Date().toISOString() })
-        .eq("id", assetId)
-        .eq("status", "pending_upload");
-      if (updateError) throw updateError;
-
-      return json({ asset_id: assetId, status: "uploaded", size_bytes: sizeBytes }, 200);
-    }
-
-    return json({ error: "unknown_action" }, 400);
-  } catch (error) {
-    console.error("presentation-upload failed", error);
-    return json({ error: "internal_error" }, 500);
+    return json({ asset_id: asset.id, upload_url: job.upload_url, upload_method: job.upload_method ?? "PUT", source_key: job.source_key }, 200);
   }
-});
 
-function required(name: string): string {
-  const value = Deno.env.get(name)?.trim();
-  if (!value) throw new Error(`missing ${name}`);
-  return value;
+  if (action === "complete") {
+    const assetId = typeof body.asset_id === "string" ? body.asset_id : "";
+    if (!assetId) throw ApiError.validation("asset_id is required.", { field: "asset_id" });
+    const { data: asset, error: assetError } = await admin
+      .from("presentation_assets")
+      .select("id, status, lxc_source_key")
+      .eq("id", assetId)
+      .eq("org_id", manager.orgId)
+      .maybeSingle();
+    if (assetError) throw ApiError.internal(assetError.message);
+    if (!asset) throw ApiError.notFound("Presentation");
+    if (asset.status !== "pending_upload") throw ApiError.validation("This asset has already left the pending_upload state.");
+
+    // The browser cannot be trusted to say "the upload finished" — ask
+    // the LXC service to confirm the object landed, then flip our status
+    // to 'uploaded' so processing can begin. Manifest/slide_count/ready
+    // still only ever arrive through the authenticated callback.
+    await confirmLxcUpload(String(asset.lxc_source_key));
+    const { error: updateError } = await admin.from("presentation_assets").update({ status: "uploaded" }).eq("id", assetId).eq("status", "pending_upload");
+    if (updateError) throw ApiError.internal(updateError.message);
+    return json({ asset_id: assetId, status: "uploaded" }, 200);
+  }
+
+  throw ApiError.validation("Unknown action.", { field: "action" });
+}, ["POST"]);
+
+async function createLxcJob(input: { assetId: string; orgId: string; filename: string; mimeType: string }) {
+  const baseUrl = requiredEnv("LXC_PRESENTATIONS_URL");
+  const apiKey = requiredEnv("LXC_PRESENTATIONS_API_KEY");
+  const callbackSecret = requiredEnv("SCENA_LXC_CALLBACK_SECRET");
+  const supabaseUrl = requiredEnv("SUPABASE_URL");
+
+  const response = await fetch(`${baseUrl}/presentation-jobs`, {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify({
+      presentation_asset_id: input.assetId,
+      org_id: input.orgId,
+      original_filename: input.filename,
+      mime_type: input.mimeType,
+      callback_url: `${supabaseUrl}/functions/v1/presentation-callback`,
+      callback_secret: callbackSecret,
+    }),
+  });
+  if (!response.ok) throw ApiError.internal(`LXC presentation service rejected the job (${response.status}).`);
+  const data = (await response.json()) as { upload_url: string; upload_method?: string; source_key: string };
+  if (!data.upload_url || !data.source_key) throw ApiError.internal("LXC presentation service returned an incomplete job.");
+  return data;
 }
 
-function json(body: unknown, status: number): Response {
-  return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json", "cache-control": "no-store" } });
+async function confirmLxcUpload(sourceKey: string) {
+  const baseUrl = requiredEnv("LXC_PRESENTATIONS_URL");
+  const apiKey = requiredEnv("LXC_PRESENTATIONS_API_KEY");
+  const response = await fetch(`${baseUrl}/presentation-jobs/${encodeURIComponent(sourceKey)}`, {
+    headers: { authorization: `Bearer ${apiKey}` },
+  });
+  if (!response.ok) throw ApiError.validation("The presentation file has not finished uploading yet.");
+  const data = (await response.json()) as { uploaded?: boolean; size_bytes?: number };
+  if (!data.uploaded) throw ApiError.validation("The presentation file has not finished uploading yet.");
+  if (typeof data.size_bytes === "number" && data.size_bytes > MAX_SIZE_BYTES) throw ApiError.validation("Presentation file exceeds the 100 MB limit.");
 }
