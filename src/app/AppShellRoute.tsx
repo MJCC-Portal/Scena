@@ -8,7 +8,7 @@
 import { useEffect, useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import { useManagerContext } from "./ManagerContextProvider";
-import { signOut } from "../auth/sso";
+import { signOut } from "../auth/session";
 import * as Locations from "../domain/locations";
 
 const NAV_GROUPS: Array<{ label: string; items: Array<{ to: string; label: string }> }> = [

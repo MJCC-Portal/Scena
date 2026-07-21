@@ -1,38 +1,24 @@
-// / — decides the correct destination. Handles the current real MJCC
-// handoff shape (KpnCompute redirects here with `#code=...`, not to
-// /auth/callback) before falling through to the normal
-// authenticated/unauthenticated/unauthorized decision. See
-// docs/AUTHENTICATION.md for why /auth/callback also exists as the
-// preferred future target.
+// / — decides the correct destination for a plain visit to the app root.
+// There is no MJCC handoff fragment to consume here anymore: Supabase Auth
+// (Google OAuth or the email link) always lands the browser on
+// /auth/callback, never on bare `/`. This route only has to answer
+// "signed in or not" and hand off to ManagerGuard for everything else.
 
 import { useEffect, useState } from "react";
 import { Navigate } from "react-router-dom";
-import { consumeAndExchangeSso } from "./useSsoExchange";
 import { resolveManagerDestination, type ManagerDestination } from "./authResolution";
 
 export function RootRoute() {
-  const [destination, setDestination] = useState<ManagerDestination | { to: "/login"; error: string } | null>(null);
+  const [destination, setDestination] = useState<ManagerDestination | null>(null);
 
   useEffect(() => {
     let active = true;
-    (async () => {
-      const exchange = await consumeAndExchangeSso();
-      if (exchange.outcome === "error") {
-        if (active) setDestination({ to: "/login", error: exchange.message });
-        return;
-      }
-      const dest = await resolveManagerDestination();
-      if (active) setDestination(dest);
-    })();
+    resolveManagerDestination().then((dest) => { if (active) setDestination(dest); });
     return () => { active = false; };
   }, []);
 
   if (!destination) {
-    return <main className="auth-shell"><div className="auth-card loading-card"><div className="spinner" /><p>Loading your MJCC workspace…</p></div></main>;
+    return <main className="auth-shell"><div className="auth-card loading-card"><div className="spinner" /></div></main>;
   }
-  if (destination.to === "/login" && "error" in destination) {
-    return <Navigate to="/login" replace state={{ error: destination.error }} />;
-  }
-  if (destination.to === "/unauthorized") return <Navigate to="/unauthorized" replace state={{ message: destination.message }} />;
   return <Navigate to={destination.to} replace />;
 }

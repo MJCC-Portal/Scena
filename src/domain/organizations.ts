@@ -10,7 +10,7 @@ export interface Member {
 
 export interface Entitlement {
   plan_code: string;
-  max_screens_per_session: number;
+  max_displays_per_session: number;
 }
 
 /** Per-session capacity — the entitlement trigger enforces the screen
@@ -61,7 +61,7 @@ export async function removeMember(orgId: string, userId: string): Promise<void>
 export async function getEntitlement(orgId: string): Promise<Entitlement> {
   requireUuid(orgId, "org_id");
   const supabase = requireSupabase();
-  const { data, error } = await supabase.from("organization_entitlements").select("plan_code, max_screens_per_session").eq("org_id", orgId).maybeSingle();
+  const { data, error } = await supabase.from("organization_entitlements").select("plan_code, max_displays_per_session").eq("org_id", orgId).maybeSingle();
   if (error) throw mapPostgresError(error);
   if (!data) throw ApiError.notFound("Entitlement");
   return data;
@@ -86,6 +86,6 @@ export async function getSessionScreenCapacity(orgId: string, sessionId: string)
     ...entitlement,
     session_id: sessionId,
     screens_in_session: inSession,
-    remaining_screens: Math.max(0, entitlement.max_screens_per_session - inSession),
+    remaining_screens: Math.max(0, entitlement.max_displays_per_session - inSession),
   };
 }

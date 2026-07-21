@@ -30,21 +30,11 @@ vi.mock("../services/supabase/client", () => ({
   callEdgeFunction: vi.fn(),
 }));
 
-const mockLoadManagerContext = vi.fn();
+const mockLoadAccountContext = vi.fn();
 vi.mock("../auth/organization-context", async (importActual) => {
   const actual = await importActual<typeof import("../auth/organization-context")>();
-  return { ...actual, loadManagerContext: () => mockLoadManagerContext() };
+  return { ...actual, loadAccountContext: () => mockLoadAccountContext() };
 });
-
-const mockConsumeSsoHandoffCode = vi.fn();
-const mockExchangeMjccCode = vi.fn();
-vi.mock("../auth/sso", () => ({
-  consumeSsoHandoffCode: () => mockConsumeSsoHandoffCode(),
-  exchangeMjccCode: (code: string) => mockExchangeMjccCode(code),
-  startMjccSignIn: vi.fn(),
-  signOut: vi.fn(),
-  mjccPortalUrl: "https://mjcc.example.test",
-}));
 
 vi.mock("../domain/locations", () => ({ listLocations: vi.fn().mockResolvedValue([]) }));
 vi.mock("../domain/menus", () => ({ listMenus: vi.fn().mockResolvedValue([]), createMenu: vi.fn() }));
@@ -67,10 +57,10 @@ vi.mock("../lib/display", () => ({
   readCachedDisplayState: () => null,
 }));
 
-const AUTHENTICATED_CONTEXT = {
+const AUTHENTICATED_ACCOUNT = {
   userId: "user-1",
-  organization: { id: "org-1", name: "MJCC", slug: "mjcc", status: "active" as const },
-  role: "owner" as const,
+  profile: { displayName: "Ada", avatarUrl: null, onboardingState: "complete" },
+  team: { id: "org-1", name: "Acme", slug: "acme", status: "active" as const, role: "owner" as const },
 };
 
 function renderAt(initialPath: string) {
@@ -92,7 +82,7 @@ describe("/login", () => {
   it("shows the sign-in card when unauthenticated", async () => {
     mockGetSession.mockResolvedValue({ data: { session: null } });
     renderAt("/login");
-    await waitFor(() => expect(screen.getByText("Continue with MJCC")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("Continue with Google")).toBeInTheDocument());
   });
 });
 
@@ -101,7 +91,7 @@ describe("/login", () => {
 describe("ManagerGuard", () => {
   it("renders the guarded subtree once context resolves (no redirect involved)", async () => {
     mockGetSession.mockResolvedValue({ data: { session: { access_token: "t" } } });
-    mockLoadManagerContext.mockResolvedValue(AUTHENTICATED_CONTEXT);
+    mockLoadAccountContext.mockResolvedValue(AUTHENTICATED_ACCOUNT);
     renderAt("/app/home");
     await waitFor(() => expect(screen.getByText(/Signed in to/)).toBeInTheDocument());
   });
@@ -112,7 +102,7 @@ describe("ManagerGuard", () => {
 describe("direct navigation to nested manager routes", () => {
   beforeEach(() => {
     mockGetSession.mockResolvedValue({ data: { session: { access_token: "t" } } });
-    mockLoadManagerContext.mockResolvedValue(AUTHENTICATED_CONTEXT);
+    mockLoadAccountContext.mockResolvedValue(AUTHENTICATED_ACCOUNT);
   });
 
   it("renders /app/menus directly, without visiting /app/home first", async () => {
@@ -137,7 +127,7 @@ describe("direct navigation to nested manager routes", () => {
 describe("unknown routes", () => {
   it("shows not-found with a home link for an unknown /app path", async () => {
     mockGetSession.mockResolvedValue({ data: { session: { access_token: "t" } } });
-    mockLoadManagerContext.mockResolvedValue(AUTHENTICATED_CONTEXT);
+    mockLoadAccountContext.mockResolvedValue(AUTHENTICATED_ACCOUNT);
     renderAt("/app/this-does-not-exist");
     await waitFor(() => expect(screen.getByText("Page not found")).toBeInTheDocument());
     expect(screen.getByText("Back to home")).toBeInTheDocument();
@@ -194,13 +184,13 @@ describe("manager and kiosk isolation", () => {
     renderAt("/display");
     await waitFor(() => expect(screen.getByText("123456")).toBeInTheDocument());
     expect(mockGetSession).not.toHaveBeenCalled();
-    expect(mockLoadManagerContext).not.toHaveBeenCalled();
+    expect(mockLoadAccountContext).not.toHaveBeenCalled();
   });
 
   it("the login route never touches kiosk device storage", async () => {
     mockGetSession.mockResolvedValue({ data: { session: null } });
     renderAt("/login");
-    await waitFor(() => expect(screen.getByText("Continue with MJCC")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("Continue with Google")).toBeInTheDocument());
     expect(mockStoredToken).not.toHaveBeenCalled();
     expect(mockRegisterDevice).not.toHaveBeenCalled();
   });
@@ -211,7 +201,7 @@ describe("manager and kiosk isolation", () => {
 describe("route error boundaries", () => {
   it("/app renders RouteErrorBoundary instead of crashing when a guarded page throws during render", async () => {
     mockGetSession.mockResolvedValue({ data: { session: { access_token: "t" } } });
-    mockLoadManagerContext.mockResolvedValue(AUTHENTICATED_CONTEXT);
+    mockLoadAccountContext.mockResolvedValue(AUTHENTICATED_ACCOUNT);
     // A throw during the *initial* render (not a subsequent navigation)
     // is caught by the route's errorElement without touching the data
     // router's navigate()/Request-construction path.

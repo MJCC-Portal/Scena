@@ -7,7 +7,7 @@ import { ApiError } from "./errors";
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const SLUG_RE = /^[a-z0-9][a-z0-9-]*$/;
 const HEX64_RE = /^[0-9a-f]{64}$/;
-const ROLES = ["owner", "admin", "operator", "viewer"] as const;
+const ROLES = ["owner", "admin", "operator", "designer", "viewer"] as const;
 const DISPLAY_MODES = ["independent", "duplicate", "extend", "single"] as const;
 const ROTATIONS = [0, 90, 180, 270] as const;
 

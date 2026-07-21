@@ -1,5 +1,5 @@
 // Pure decision-logic tests for the routing/auth boundary
-// (resolveManagerDestination, consumeAndExchangeSso, resolveGuardState).
+// (resolveManagerDestination, resolveGuardState).
 //
 // These test the exact same decisions router.test.tsx's DOM-rendering
 // tests would otherwise exercise by watching a live <Navigate> fire —
@@ -23,23 +23,22 @@ vi.mock("../services/supabase/client", () => ({
   supabase: { auth: { getSession: () => mockGetSession() } },
 }));
 
-const mockLoadManagerContext = vi.fn();
+const mockLoadAccountContext = vi.fn();
 vi.mock("../auth/organization-context", async (importActual) => {
   const actual = await importActual<typeof import("../auth/organization-context")>();
-  return { ...actual, loadManagerContext: () => mockLoadManagerContext() };
+  return { ...actual, loadAccountContext: () => mockLoadAccountContext() };
 });
 
-const mockConsumeSsoHandoffCode = vi.fn();
-const mockExchangeMjccCode = vi.fn();
-vi.mock("../auth/sso", () => ({
-  consumeSsoHandoffCode: () => mockConsumeSsoHandoffCode(),
-  exchangeMjccCode: (code: string) => mockExchangeMjccCode(code),
-}));
-
-const AUTHENTICATED_CONTEXT = {
+const ACCOUNT_WITH_TEAM = {
   userId: "user-1",
-  organization: { id: "org-1", name: "MJCC", slug: "mjcc", status: "active" as const },
-  role: "owner" as const,
+  profile: { displayName: "Ada", avatarUrl: null, onboardingState: "complete" },
+  team: { id: "org-1", name: "Acme", slug: "acme", status: "active" as const, role: "owner" as const },
+};
+
+const ACCOUNT_WITHOUT_TEAM = {
+  userId: "user-1",
+  profile: { displayName: "Ada", avatarUrl: null, onboardingState: "complete" },
+  team: null,
 };
 
 beforeEach(() => vi.clearAllMocks());
@@ -51,25 +50,10 @@ describe("resolveManagerDestination (backs / and /login)", () => {
     await expect(resolveManagerDestination()).resolves.toEqual({ to: "/login" });
   });
 
-  it("targets /app/home for an authenticated manager with valid membership", async () => {
+  it("targets /app/home for any authenticated session, Team or not", async () => {
     mockGetSession.mockResolvedValue({ data: { session: { access_token: "t" } } });
-    mockLoadManagerContext.mockResolvedValue(AUTHENTICATED_CONTEXT);
     const { resolveManagerDestination } = await import("./authResolution");
     await expect(resolveManagerDestination()).resolves.toEqual({ to: "/app/home" });
-  });
-
-  it("targets /unauthorized when the session has no membership", async () => {
-    mockGetSession.mockResolvedValue({ data: { session: { access_token: "t" } } });
-    mockLoadManagerContext.mockRejectedValue(new Error("Your account is not linked to an organization."));
-    const { resolveManagerDestination } = await import("./authResolution");
-    await expect(resolveManagerDestination()).resolves.toEqual({ to: "/unauthorized", message: "Your account is not linked to an organization." });
-  });
-
-  it("targets /unauthorized for a suspended organization", async () => {
-    mockGetSession.mockResolvedValue({ data: { session: { access_token: "t" } } });
-    mockLoadManagerContext.mockRejectedValue(new Error("This organization is suspended."));
-    const { resolveManagerDestination } = await import("./authResolution");
-    await expect(resolveManagerDestination()).resolves.toEqual({ to: "/unauthorized", message: "This organization is suspended." });
   });
 
   it("never loops: every outcome is a concrete, non-'/' destination", async () => {
@@ -87,47 +71,32 @@ describe("resolveGuardState (backs the /app ManagerGuard)", () => {
     await expect(resolveGuardState()).resolves.toEqual({ status: "unauthenticated" });
   });
 
-  it("resolves 'ready' with a session and valid membership", async () => {
+  it("resolves 'ready' with a session and an active Team", async () => {
     mockGetSession.mockResolvedValue({ data: { session: { access_token: "t" } } });
-    mockLoadManagerContext.mockResolvedValue(AUTHENTICATED_CONTEXT);
+    mockLoadAccountContext.mockResolvedValue(ACCOUNT_WITH_TEAM);
     const { resolveGuardState } = await import("./ManagerGuard");
-    await expect(resolveGuardState()).resolves.toEqual({ status: "ready", context: AUTHENTICATED_CONTEXT });
+    await expect(resolveGuardState()).resolves.toEqual({ status: "ready", account: ACCOUNT_WITH_TEAM });
   });
 
-  it("resolves 'unauthorized' with a message when membership is missing", async () => {
+  it("resolves 'ready' with a session and no Team (Team is optional, not an error)", async () => {
     mockGetSession.mockResolvedValue({ data: { session: { access_token: "t" } } });
-    mockLoadManagerContext.mockRejectedValue(new Error("Your account is not linked to an organization."));
+    mockLoadAccountContext.mockResolvedValue(ACCOUNT_WITHOUT_TEAM);
     const { resolveGuardState } = await import("./ManagerGuard");
-    await expect(resolveGuardState()).resolves.toEqual({ status: "unauthorized", message: "Your account is not linked to an organization." });
+    await expect(resolveGuardState()).resolves.toEqual({ status: "ready", account: ACCOUNT_WITHOUT_TEAM });
   });
 
-  it("resolves 'unauthorized' even when the rejection is not an Error instance", async () => {
+  it("resolves 'error' with a message when account context fails to load", async () => {
     mockGetSession.mockResolvedValue({ data: { session: { access_token: "t" } } });
-    mockLoadManagerContext.mockRejectedValue("a plain string rejection");
+    mockLoadAccountContext.mockRejectedValue(new Error("Your account profile is still being set up."));
+    const { resolveGuardState } = await import("./ManagerGuard");
+    await expect(resolveGuardState()).resolves.toEqual({ status: "error", message: "Your account profile is still being set up." });
+  });
+
+  it("resolves 'error' even when the rejection is not an Error instance", async () => {
+    mockGetSession.mockResolvedValue({ data: { session: { access_token: "t" } } });
+    mockLoadAccountContext.mockRejectedValue("a plain string rejection");
     const { resolveGuardState } = await import("./ManagerGuard");
     const state = await resolveGuardState();
-    expect(state.status).toBe("unauthorized");
-  });
-});
-
-describe("consumeAndExchangeSso (backs / and /auth/callback)", () => {
-  it("reports no_code when the fragment is absent", async () => {
-    mockConsumeSsoHandoffCode.mockReturnValue(null);
-    const { consumeAndExchangeSso } = await import("./useSsoExchange");
-    await expect(consumeAndExchangeSso()).resolves.toEqual({ outcome: "no_code" });
-  });
-
-  it("reports success after a valid code exchanges cleanly", async () => {
-    mockConsumeSsoHandoffCode.mockReturnValue("a-valid-code");
-    mockExchangeMjccCode.mockResolvedValue({ id: "user-1" });
-    const { consumeAndExchangeSso } = await import("./useSsoExchange");
-    await expect(consumeAndExchangeSso()).resolves.toEqual({ outcome: "success" });
-  });
-
-  it("reports an error for an expired/reused/failed exchange", async () => {
-    mockConsumeSsoHandoffCode.mockReturnValue("an-expired-code");
-    mockExchangeMjccCode.mockRejectedValue(new Error("invalid_or_expired_handoff"));
-    const { consumeAndExchangeSso } = await import("./useSsoExchange");
-    await expect(consumeAndExchangeSso()).resolves.toEqual({ outcome: "error", message: "invalid_or_expired_handoff" });
+    expect(state.status).toBe("error");
   });
 });

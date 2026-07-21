@@ -5,6 +5,7 @@
 export const ERROR_CODES = [
   "UNAUTHENTICATED",
   "FORBIDDEN",
+  "ACCOUNT_PROFILE_REQUIRED",
   "MEMBERSHIP_REQUIRED",
   "ORGANIZATION_SUSPENDED",
   "RESOURCE_NOT_FOUND",
@@ -58,6 +59,9 @@ export class ApiError extends Error {
   }
   static forbidden(message = "Not allowed.") {
     return new ApiError("FORBIDDEN", message, 403);
+  }
+  static accountProfileRequired(message = "Your account profile is still being set up.") {
+    return new ApiError("ACCOUNT_PROFILE_REQUIRED", message, 409);
   }
   static membershipRequired(message = "Your account is not linked to an organization.") {
     return new ApiError("MEMBERSHIP_REQUIRED", message, 403);

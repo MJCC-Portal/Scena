@@ -1,34 +1,36 @@
-// Manager authentication + organization-context guard for everything
-// under /app. Loads context exactly once per mount (not per nested route
-// — React Router keeps this component mounted across nested navigation),
-// and is the single place that decides /login vs /unauthorized vs
-// rendering the guarded subtree. This replaces the auth check that used
-// to live inline in src/App.tsx's root component.
+// Authenticated-account guard for everything under /app. Loads context
+// exactly once per mount (React Router keeps this component mounted
+// across nested navigation), and is the single place that decides
+// /login vs. rendering the guarded subtree. An authenticated account with
+// no Team is not an error — it renders TeamRequiredPage instead of the
+// legacy Team-scoped page tree. Only a genuine failure to load context
+// (e.g. a database error) goes to /unauthorized.
 //
 // The decision itself (resolveGuardState) is a plain async function, kept
 // separate from the component so it's directly unit-testable without
-// mounting a router — see src/app/ManagerGuard.test.ts.
+// mounting a router — see src/app/authDecisions.test.ts.
 
 import { useEffect, useState } from "react";
 import { Navigate, Outlet } from "react-router-dom";
 import { supabase } from "../services/supabase/client";
-import { loadManagerContext, type ManagerContext } from "../auth/organization-context";
+import { loadAccountContext, toManagerContext, type AccountContext } from "../auth/organization-context";
 import { ManagerContextProvider } from "./ManagerContextProvider";
+import { TeamRequiredPage } from "../pages/auth/TeamRequiredPage";
 
 export type GuardState =
   | { status: "loading" }
   | { status: "unauthenticated" }
-  | { status: "unauthorized"; message: string }
-  | { status: "ready"; context: ManagerContext };
+  | { status: "error"; message: string }
+  | { status: "ready"; account: AccountContext };
 
 export async function resolveGuardState(): Promise<GuardState> {
   const { data } = supabase ? await supabase.auth.getSession() : { data: { session: null } };
   if (!data.session) return { status: "unauthenticated" };
   try {
-    const context = await loadManagerContext();
-    return { status: "ready", context };
+    const account = await loadAccountContext();
+    return { status: "ready", account };
   } catch (err) {
-    return { status: "unauthorized", message: err instanceof Error ? err.message : "Access unavailable." };
+    return { status: "error", message: err instanceof Error ? err.message : "Access unavailable." };
   }
 }
 
@@ -46,13 +48,16 @@ export function ManagerGuard() {
   }, []);
 
   if (state.status === "loading") {
-    return <main className="auth-shell"><div className="auth-card loading-card"><div className="spinner" /><p>Loading your MJCC workspace…</p></div></main>;
+    return <main className="auth-shell"><div className="auth-card loading-card"><div className="spinner" /><p>Loading your Scena account…</p></div></main>;
   }
   if (state.status === "unauthenticated") return <Navigate to="/login" replace />;
-  if (state.status === "unauthorized") return <Navigate to="/unauthorized" replace state={{ message: state.message }} />;
+  if (state.status === "error") return <Navigate to="/unauthorized" replace state={{ message: state.message }} />;
+
+  const managerContext = toManagerContext(state.account);
+  if (!managerContext) return <TeamRequiredPage />;
 
   return (
-    <ManagerContextProvider value={state.context}>
+    <ManagerContextProvider value={managerContext}>
       <Outlet />
     </ManagerContextProvider>
   );

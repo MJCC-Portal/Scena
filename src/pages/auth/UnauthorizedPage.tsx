@@ -1,13 +1,13 @@
-// /unauthorized — a distinct screen for an authenticated user with no
-// valid membership (MEMBERSHIP_REQUIRED) or a suspended organization
-// (ORGANIZATION_SUSPENDED), separate from /login's "not signed in" case.
+// /unauthorized — reached only for a genuine error resolving account
+// context (e.g. a database error), not for "signed in with no Team"
+// (that's TeamRequiredPage, reached from inside ManagerGuard instead).
 
 import { useLocation } from "react-router-dom";
-import { signOut } from "../../auth/sso";
+import { signOut } from "../../auth/session";
 
 export function UnauthorizedPage() {
   const location = useLocation();
-  const message = (location.state as { message?: string } | null)?.message ?? "Your account does not have access to a Scena organization.";
+  const message = (location.state as { message?: string } | null)?.message ?? "Your Scena account could not be loaded.";
 
   return (
     <main className="auth-shell">
