@@ -1,0 +1,140 @@
+name: Scena CI
+
+# Read-only, no-deploy verification for every PR into main and every push
+# to main. This workflow checks the aircraft before takeoff — it must
+# never also grab the throttle: no `npm run build`-triggered deploy, no
+# `deploy_edge_function`, no `apply_migration`, no Stripe calls, no
+# production secret. See docs/API_V2_PROGRESS.md for why this was added
+# as part of the API v2 foundation phase rather than left for later.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Non-secret build-time placeholders. Vite embeds these at build time;
+  # they are never used to reach the live Scena backend from CI, and no
+  # test in this repo depends on a real Supabase connection.
+  VITE_SUPABASE_URL: "https://ci-placeholder.supabase.co"
+  VITE_SUPABASE_PUBLISHABLE_KEY: "ci-placeholder-anon-key"
+
+jobs:
+  application:
+    name: Application (TypeScript, tests, build)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies (locked)
+        run: npm ci
+
+      - name: TypeScript project build
+        run: npx tsc -b
+
+      - name: Unit tests
+        run: npx vitest run
+
+      - name: Production build
+        run: npm run build
+
+      - name: Confirm build output exists
+        run: test -f dist/index.html
+
+      - name: Upload production build (non-sensitive)
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-build
+          path: dist
+          retention-days: 7
+
+  edge-functions:
+    name: Edge Functions (deno check)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Mirror supabase/functions outside the npm workspace
+        # Deno's npm-specifier resolution walks up to the nearest
+        # package.json/node_modules. Checking a function in place would
+        # find this repo's frontend package.json/node_modules and try to
+        # satisfy the ENTIRE frontend dependency tree (React, Vite, etc.)
+        # to resolve one unrelated transitive npm: type reference —
+        # unrelated to whether the function itself type-checks, and it
+        # can fail on things like a minimum-dependency-age policy on a
+        # frontend devDependency. Mirroring to $RUNNER_TEMP (no ancestor
+        # package.json) removes that interference entirely; relative
+        # imports between a function and _shared/ still resolve
+        # correctly since the whole functions/ tree moves together.
+        run: |
+          mkdir -p "$RUNNER_TEMP/functions-check"
+          cp -r supabase/functions "$RUNNER_TEMP/functions-check/functions"
+
+      - name: deno check every Edge Function
+        working-directory: ${{ runner.temp }}/functions-check/functions
+        run: |
+          set -euo pipefail
+          fail=0
+          checked=0
+          for dir in */ ; do
+            name="${dir%/}"
+            if [ "$name" = "_shared" ]; then continue; fi
+            entry="${dir}index.ts"
+            if [ ! -f "$entry" ]; then continue; fi
+            checked=$((checked + 1))
+            echo "::group::deno check $name"
+            if ! deno check "$entry"; then
+              echo "::error::deno check failed for $name"
+              fail=1
+            fi
+            echo "::endgroup::"
+          done
+          echo "Checked $checked Edge Function(s)."
+          if [ "$checked" -eq 0 ]; then
+            echo "::error::No Edge Function entrypoints were discovered — the discovery step itself is broken."
+            exit 1
+          fi
+          exit $fail
+
+  contract-validation:
+    name: API contract validation
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Validate OpenAPI / inventory contracts
+        run: node scripts/validate-api-contracts.mjs

@@ -3,6 +3,7 @@
 // Deno-side twin — kept structurally identical on purpose).
 
 export const ERROR_CODES = [
+  // Shared v1 + v2 codes.
   "UNAUTHENTICATED",
   "FORBIDDEN",
   "ACCOUNT_PROFILE_REQUIRED",
@@ -26,6 +27,31 @@ export const ERROR_CODES = [
   "AUTOMATION_EXECUTION_FAILED",
   "CROSS_ORG_ACCESS",
   "INTERNAL_ERROR",
+  // API v2 stable codes (docs/API_V2.md). Additive only — no v1 code above
+  // is renamed or removed, even where a v2 code covers similar ground
+  // under new Team/Board/Display/Session terminology (e.g. NOT_FOUND vs.
+  // RESOURCE_NOT_FOUND, DISPLAY_CREDENTIAL_INVALID vs. DEVICE_CREDENTIAL_INVALID)
+  // — see the legacy/v2 error-code mapping table in that doc.
+  "TEAM_REQUIRED",
+  "TEAM_LIMIT_REACHED",
+  "TEAM_OVER_LIMIT",
+  "PLAN_REQUIRED",
+  "PLAN_FEATURE_REQUIRED",
+  "SUBSCRIPTION_REQUIRED",
+  "SUBSCRIPTION_INACTIVE",
+  "MEMBER_LIMIT_REACHED",
+  "BOARD_LIMIT_REACHED",
+  "DISPLAY_LIMIT_REACHED",
+  "SESSION_LIMIT_REACHED",
+  "SESSION_DISPLAY_LIMIT_REACHED",
+  "RESOURCE_CONFLICT",
+  "INVALID_INVITATION",
+  "INVITATION_EMAIL_MISMATCH",
+  "DISPLAY_CREDENTIAL_INVALID",
+  "DISPLAY_REVOKED",
+  "PROCESSING_FAILED",
+  "NOT_FOUND",
+  "IDEMPOTENCY_CONFLICT",
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];
@@ -80,6 +106,69 @@ export class ApiError extends Error {
   }
   static internal(message = "Something went wrong.") {
     return new ApiError("INTERNAL_ERROR", message, 500);
+  }
+
+  // API v2 stable-code constructors (docs/API_V2.md).
+  static teamRequired(message = "This action requires an active Team.") {
+    return new ApiError("TEAM_REQUIRED", message, 403);
+  }
+  static teamLimitReached(message = "This account already belongs to an active Team.") {
+    return new ApiError("TEAM_LIMIT_REACHED", message, 409);
+  }
+  static teamOverLimit(message = "This Team is over its plan limit.", details?: Record<string, unknown>) {
+    return new ApiError("TEAM_OVER_LIMIT", message, 403, details);
+  }
+  static planRequired(message = "Choose a plan to continue.") {
+    return new ApiError("PLAN_REQUIRED", message, 402);
+  }
+  static planFeatureRequired(message = "This feature is not included in the current plan.") {
+    return new ApiError("PLAN_FEATURE_REQUIRED", message, 402);
+  }
+  static subscriptionRequired(message = "An active subscription is required.") {
+    return new ApiError("SUBSCRIPTION_REQUIRED", message, 402);
+  }
+  static subscriptionInactive(message = "This Team's subscription is not active.") {
+    return new ApiError("SUBSCRIPTION_INACTIVE", message, 402);
+  }
+  static memberLimitReached(message = "This Team has reached its member limit.") {
+    return new ApiError("MEMBER_LIMIT_REACHED", message, 409);
+  }
+  static boardLimitReached(message = "This Team has reached its Board limit.") {
+    return new ApiError("BOARD_LIMIT_REACHED", message, 409);
+  }
+  static displayLimitReached(message = "This Team has reached its Display limit.") {
+    return new ApiError("DISPLAY_LIMIT_REACHED", message, 409);
+  }
+  static sessionLimitReached(message = "This Team has reached its concurrent Session limit.") {
+    return new ApiError("SESSION_LIMIT_REACHED", message, 409);
+  }
+  static sessionDisplayLimitReached(message = "A Session allows at most 4 Displays.") {
+    return new ApiError("SESSION_DISPLAY_LIMIT_REACHED", message, 409);
+  }
+  static resourceConflict(message = "This request conflicts with the resource's current state.", details?: Record<string, unknown>) {
+    return new ApiError("RESOURCE_CONFLICT", message, 409, details);
+  }
+  static invalidInvitation(message = "This invitation is invalid or has expired.") {
+    return new ApiError("INVALID_INVITATION", message, 400);
+  }
+  static invitationEmailMismatch(message = "This invitation was issued to a different email address.") {
+    return new ApiError("INVITATION_EMAIL_MISMATCH", message, 403);
+  }
+  static displayCredentialInvalid(message = "Invalid Display credential.") {
+    return new ApiError("DISPLAY_CREDENTIAL_INVALID", message, 401);
+  }
+  static displayRevoked(message = "This Display's credential has been revoked.") {
+    return new ApiError("DISPLAY_REVOKED", message, 403);
+  }
+  static processingFailed(message = "Processing failed.", details?: Record<string, unknown>) {
+    return new ApiError("PROCESSING_FAILED", message, 422, details);
+  }
+  /** v2 canonical NOT_FOUND — use this in new v2 code; `notFound()` (RESOURCE_NOT_FOUND) stays for v1 compatibility. */
+  static notFoundV2(resource: string) {
+    return new ApiError("NOT_FOUND", `${resource} not found.`, 404);
+  }
+  static idempotencyConflict(message = "This request was already processed with a different payload.") {
+    return new ApiError("IDEMPOTENCY_CONFLICT", message, 409);
   }
 }
 

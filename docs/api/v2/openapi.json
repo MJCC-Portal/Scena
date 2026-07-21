@@ -1,0 +1,54 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Scena API v2",
+    "version": "2",
+    "description": "Foundation-phase contract only (docs/API_V2.md). No v2 product endpoint is deployed under this path yet — scena-api itself does not exist as a Supabase Edge Function. This document exists so the envelope/error contract is reviewable before the first real route lands, not to claim a live surface."
+  },
+  "servers": [
+    { "url": "{SUPABASE_URL}/functions/v1/scena-api/v2", "variables": { "SUPABASE_URL": { "default": "https://your-project.supabase.co" } } }
+  ],
+  "components": {
+    "schemas": {
+      "SuccessEnvelope": {
+        "type": "object",
+        "required": ["data", "meta"],
+        "properties": {
+          "data": {},
+          "meta": {
+            "type": "object",
+            "required": ["api_version", "request_id"],
+            "properties": {
+              "api_version": { "type": "string", "enum": ["2"] },
+              "request_id": { "type": "string", "maxLength": 100 }
+            }
+          }
+        }
+      },
+      "ErrorEnvelope": {
+        "type": "object",
+        "required": ["error"],
+        "properties": {
+          "error": {
+            "type": "object",
+            "required": ["code", "message", "request_id"],
+            "properties": {
+              "code": { "type": "string", "example": "TEAM_REQUIRED" },
+              "message": { "type": "string" },
+              "details": { "type": "object", "additionalProperties": true },
+              "request_id": { "type": "string", "maxLength": 100 }
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "managerBearer": { "type": "http", "scheme": "bearer", "bearerFormat": "Supabase JWT", "description": "Manager session access token — the only trust boundary this router will ever accept." }
+    },
+    "headers": {
+      "RequestId": { "description": "Correlation ID, echoed from the request or generated server-side. Never used as authentication.", "schema": { "type": "string", "maxLength": 100 } },
+      "IdempotencyKey": { "description": "Client-supplied key for retry-safe mutations. No server-side store exists yet (docs/API_V2.md).", "schema": { "type": "string", "maxLength": 100 } }
+    }
+  },
+  "paths": {}
+}

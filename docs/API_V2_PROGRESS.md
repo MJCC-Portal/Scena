@@ -151,3 +151,74 @@ Deployed via `deploy_edge_function` with `verify_jwt: true` preserved (matching 
 `get_logs(service: "edge-function")` shows `mjcc-sso-exchange` already returning **HTTP 410 Gone** on POST requests at its currently-recorded version, with earlier historical entries (an older deployed version) showing normal `200 OK` responses. This means the function was already soft-disabled (returns 410 rather than actually processing requests) by some prior action outside this session — not something this session did. Deleting it is still Phase 6 scope per the plan; noting this now so Phase 6 doesn't assume the function is still functionally live just because its status shows ACTIVE (source/deployed/functional are separate facts — INV-7).
 
 **Phase 1 status: complete.** Remaining open items carried to later phases: Stripe tool access (Phase 3), the not-click-tested post-consent OAuth callback leg (needs a real account to complete safely), and the `mjcc-sso-exchange` 410 finding above (Phase 6).
+
+## Session 1, continued — Phase 2 (API v2 foundation)
+
+### Note on the phase-2 prompt
+The instruction message cut off mid-way through the success-envelope JSON example in phase_step 6. Proceeded without waiting for the rest, using the already-established envelope/error-code contract from the original engagement brief (which fully specifies the success/error envelope shapes and the full stable error-code list) — flagged to the owner rather than guessed silently.
+
+### Git state
+HEAD confirmed at `e8a8893` (`v1.0.2`) on `main`, matching remote, before any Phase 2 file was touched. No commit or push performed this phase (per this phase's own git guardrails) — everything below is uncommitted, awaiting an owner-approved identifier.
+
+### What was built
+- **Extended (not replaced) the existing error contract**: [src/shared/errors.ts](src/shared/errors.ts) and its Deno twin [supabase/functions/_shared/errors.ts](supabase/functions/_shared/errors.ts) gained the full v2 stable error-code list (`TEAM_REQUIRED`, `TEAM_LIMIT_REACHED`, `PLAN_REQUIRED`, `RESOURCE_CONFLICT`, `IDEMPOTENCY_CONFLICT`, etc.) plus matching static constructors, purely additive — no v1 code renamed or removed, one `ApiError` class serves both. Documented the v1/v2 naming overlaps (e.g. `RESOURCE_NOT_FOUND` vs. new `NOT_FOUND`) in `docs/API_V2.md` rather than silently merging them.
+- **`src/api/v2/`** — client-side foundation: `envelopes.ts`, `request.ts` (request-ID policy), `idempotency.ts` (client-side key generation only), `errors.ts` (re-exports `ApiError`, adds envelope parsing + `ApiV2TransportError`), `types.ts`, `client.ts` (`requestV2()` — attaches session token + apikey + request ID/idempotency header, parses success/error envelopes, throws typed errors on malformed responses), `modules/` (empty — first real module lands with the first real v2 resource), `index.ts` barrel.
+- **`supabase/functions/_shared/v2/`** — Edge Function foundation: `cors.ts`, `request.ts` (Deno twin), `response.ts` (`jsonV2`/`errorResponseV2`/`serveJsonV2`), `auth.ts` (re-exports the existing `requireManager` — no second identity resolver), `validation.ts` (pagination + JSON-body parsing), `logging.ts` (structured JSON logs), `idempotency.ts` and `audit.ts` (shape only, explicitly **not wired to any table** — see below).
+- **Fixed a real type-accuracy gap encountered directly in this path**: `supabase/functions/_shared/managerAuth.ts`'s role union was missing `"designer"` (same gap already fixed on the frontend in Phase 1; confirmed live via the `organization_members_role_check` constraint). Type-only change; not redeployed (source-only — no function using it was redeployed this session).
+- **`docs/API_V2.md`** — the architecture decision doc: router-vs-many-functions decision (one `scena-api` router, not built yet), trust-boundary separation rationale, domain-module relationship, physical-schema Option A decision + legacy/v2 name mapping table, envelope contract, request-ID policy, error-code mapping table, and the **proposed (not applied)** DDL for `idempotency_keys` and `audit_events`.
+- **`docs/api/v2/openapi.json`** and **`docs/api/v2/api-inventory.json`** — machine-readable companions. `paths` is intentionally empty in both; they record the shared infrastructure, not fabricated live routes.
+
+### Explicit non-scope decisions (autonomous-but-flagged)
+- `[decision] Did not create the scena-api Edge Function this phase, even though it's named in the recommended structure. Why: there is no v2 product resource yet to route to — deploying an empty router serves no verification purpose and risks a false "endpoint exists" impression. What changes if the owner disagrees: trivial to scaffold once Phase 3/4 has a real resource to route.`
+- `[decision] Did not apply the idempotency_keys or audit_events migrations — proposed the DDL in docs/API_V2.md instead of running apply_migration. Why: this phase's own database guardrail forbids adding a migration "merely to make the architecture look cleaner," and no v2 endpoint built this phase would write to either table. What changes if the owner disagrees: the DDL is already drafted and reviewed; applying it is a single apply_migration call away.`
+- `[decision] Added "designer" to managerAuth.ts's role type (Deno side) to match the already-fixed frontend and the live DB constraint, without adding it to MANAGER_ROLES (the operator-or-above allowlist) — Designer's live-Session authority is a separate, real permissions question (role_permissions in the brief), not something to guess into an existing allowlist while just fixing a type. What changes if the owner disagrees: one more line to adjust once the real role-permission matrix is implemented (Phase 3/4).`
+
+### What was verified (method, this session)
+- `tsc -b` — clean.
+- `deno check` — ran (via the same isolated-temp-directory technique as Phase 1, to avoid the frontend's `package.json` polluting resolution) against all 8 new `_shared/v2/*.ts` files plus their `errors.ts`/`managerAuth.ts` dependencies — **all pass**.
+- `vitest run` — **96/96 tests pass** (77 carried over + 19 new: envelope helpers, request-ID policy, and 6 `requestV2()` scenarios covering auth header attachment, caller-supplied request-id/idempotency-key, error-envelope → `ApiError`, malformed-JSON → `ApiV2TransportError`, non-envelope-JSON → `ApiV2TransportError`, and the no-session → `UNAUTHENTICATED` case with zero network calls made).
+- `vite build` — succeeds.
+- **Not verified, and not claimed**: no v2 endpoint was invoked against the live Supabase project (none exists to invoke). `requestV2()` calling a real `/scena-api/v2/...` path today would correctly 404 — that behavior itself wasn't click-tested this session, only unit-tested via a mocked `fetch`.
+
+### GitHub Actions CI (added to Phase 2 per owner instruction)
+Added `.github/workflows/ci.yml` ("Scena CI") — the repo had zero CI before this; Phase 1's `v1.0.2` push was validated only by local commands.
+
+- **Triggers**: `pull_request` → `main`, `push` → `main`, `workflow_dispatch`. No deploy trigger.
+- **Permissions**: top-level `contents: read`; every job repeats the same scoped permissions (verified by a test, not just written and trusted).
+- **Concurrency**: `group: ${{ github.workflow }}-${{ github.ref }}`, `cancel-in-progress: true` — a newer push to the same PR cancels the older run; unrelated branches don't interact.
+- **Runtime**: Node 22 (`actions/setup-node@v4`, `cache: npm`), Deno via `denoland/setup-deno@v2` (`deno-version: v2.x`). All actions pinned to stable major-version tags (no repo-specific SHA-pinning policy exists yet to pin tighter than that — flagged as a decision, not silently assumed).
+- **Jobs** (all `ubuntu-latest`, never self-hosted, no dependency on this machine/network/LXC):
+  1. `application` — checkout → setup-node → `npm ci` → `npx tsc -b` → `npx vitest run` → `npm run build` → `test -f dist/index.html` → upload `dist/` as an artifact (7-day retention, non-sensitive).
+  2. `edge-functions` — checkout → setup Deno → **mirrors `supabase/functions/` to `$RUNNER_TEMP`** (see below for why) → discovers every `*/index.ts` and runs `deno check` on each, failing the job on any failure or on zero-functions-discovered (a broken discovery step must not silently pass).
+  3. `contract-validation` — checkout → setup-node → `node scripts/validate-api-contracts.mjs` (new script, no dependencies, validates JSON parses + required v2 fields + duplicate-operationId detection + version metadata + a staleness check that's explicitly a no-op today since no generator command exists).
+- **Why the `edge-functions` job mirrors the tree instead of checking in place**: discovered directly in this session — `deno check`'d against a file inside this repo's checkout finds this repo's own frontend `package.json`/`node_modules` as an ancestor and tries to satisfy the *entire frontend npm dependency tree* to resolve one unrelated transitive `npm:` type reference inside a `jsr:` package, which can fail on things like a frontend devDependency's minimum-dependency-age policy — nothing to do with whether the function itself is correct. Copying `supabase/functions/` to `$RUNNER_TEMP` (no ancestor `package.json`) removes the interference; relative `../_shared` imports still resolve because the whole tree moves together. Verified this exact failure mode and fix locally (see below) before writing it into CI.
+- **Secrets**: none referenced anywhere in the file — verified by a dedicated test, not just by writing it carefully. Build-time Vite env vars (`VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`) are hard-coded placeholder strings at workflow `env:` scope, not secrets.
+- **Integration-test boundary**: documented here, not built. A future, separate workflow for authenticated Stripe-sandbox/test-user flows would need a dedicated Supabase branch/test project, Stripe test mode, GitHub Environments for approval/secret isolation, manual dispatch, and its own cleanup — none of that exists yet and nothing was invented to fake it.
+
+**New supporting files**: `scripts/validate-api-contracts.mjs` (contract validation, runs identically in CI and locally), `src/ci/workflow.test.ts` (12 tests: YAML parses, triggers correct, permissions least-privilege on every job, concurrency group correct, required jobs present, required commands present in the right jobs, no forbidden secret name anywhere, no deploy/migration command in any `run:` step, no self-hosted runner). Added `js-yaml` + `@types/js-yaml` as devDependencies (needed to parse the workflow YAML in that test; nothing else in the repo needed a YAML parser before).
+
+### Local verification of every CI command (this session)
+`deno check` requires the mirror workaround as noted above — verified directly (see Phase 1/2 log entries above for the technique). The **frontend** commands (`npm ci`, `tsc -b`, `vitest run`, `npm run build`) could not be run via `npm ci` directly on `Z:\Scena` — `npm ci`'s clean-reinstall triggers a native postinstall spawn that hits the same network-share `spawn EPERM` documented in `AGENTS.md`/`README.md`. Followed the documented remediation exactly: copied the working tree (excluding `node_modules`, `dist`, `.git`) to a local temp directory and ran the real CI commands there, with the same placeholder env vars CI will use:
+- `npm ci` — **succeeds** (206 packages, ~7s) off the network share.
+- `npx tsc -b` — **clean**.
+- `npx vitest run` — **108/108 pass** in ~4.5s (vs. 80–90s on the network share via the `ESBUILD_BINARY_PATH` workaround — confirms the network-share slowdown/EPERM issue is a local-machine-only artifact that a Linux GitHub Actions runner will never encounter).
+- `npm run build` — succeeds; `test -f dist/index.html` — **true**.
+- `node scripts/validate-api-contracts.mjs` — passes (run directly on `Z:\Scena`, no native-binary dependency, unaffected by the network-share issue).
+The local copy was deleted after verification (it necessarily included the real local `.env`, including `SUPABASE_ACCESS_TOKEN` — never printed, never left on disk after cleanup, never part of any CI content).
+
+### Definition of done — CI (per owner's `ci_definition_of_done` addendum)
+| Item | Status |
+|---|---|
+| `.github/workflows/ci.yml` exists | done |
+| Least-privilege permissions | done (top-level + every job; test-verified) |
+| Type checking runs in CI | done (`application` job) |
+| All unit tests run in CI | done (`application` job) |
+| Production build runs in CI | done (`application` job) |
+| Maintained Edge Functions run through `deno check` in CI | done (`edge-functions` job; discovers and checks all function entrypoints, a superset of the explicit minimum list) |
+| API v2 JSON contracts validated in CI | done (`contract-validation` job) |
+| No production secret required | done (verified by test + manual grep) |
+| No deployment or migration from standard CI | done (verified by test + manual grep) |
+| Owner-approved commit pushed | **not done** — nothing committed this phase |
+| Resulting GitHub Actions run passes remotely | **not done — cannot be true until a commit is actually pushed** |
+
+**Phase 2 status: feature-complete, CI-added-per-instruction, but explicitly NOT remotely verified.** Nothing has been committed or pushed this phase. The `github_actions.remote_run_status` in this checkpoint's report is `not_run` — this is a fact, not a placeholder, and will not be upgraded to `passed` until an actual pushed commit produces an actual GitHub Actions run that actually finishes green.

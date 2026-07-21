@@ -4,7 +4,7 @@ import { ApiError } from "./errors.ts";
 export interface ManagerAuthContext {
   userId: string;
   orgId: string;
-  role: "owner" | "admin" | "operator" | "viewer";
+  role: "owner" | "admin" | "operator" | "designer" | "viewer";
 }
 
 const MANAGER_ROLES = ["owner", "admin", "operator"] as const;
@@ -18,7 +18,7 @@ const MANAGER_ROLES = ["owner", "admin", "operator"] as const;
 export async function requireManager(
   admin: SupabaseClient,
   req: Request,
-  opts: { minRole?: "owner" | "admin" | "operator" | "viewer"; requireOrgActive?: boolean } = {},
+  opts: { minRole?: "owner" | "admin" | "operator" | "designer" | "viewer"; requireOrgActive?: boolean } = {},
 ): Promise<ManagerAuthContext> {
   const jwt = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
   if (!jwt) throw ApiError.unauthenticated();

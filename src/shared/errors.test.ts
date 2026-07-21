@@ -1,5 +1,23 @@
 import { describe, expect, it } from "vitest";
-import { mapPostgresError } from "./errors";
+import { ApiError, mapPostgresError } from "./errors";
+
+describe("API v2 error constructors (additive to the v1 contract)", () => {
+  it("teamRequired produces a stable TEAM_REQUIRED/403", () => {
+    const err = ApiError.teamRequired();
+    expect(err.code).toBe("TEAM_REQUIRED");
+    expect(err.status).toBe(403);
+  });
+
+  it("notFoundV2 (NOT_FOUND) is distinct from the v1 notFound (RESOURCE_NOT_FOUND)", () => {
+    expect(ApiError.notFoundV2("Board").code).toBe("NOT_FOUND");
+    expect(ApiError.notFound("Board").code).toBe("RESOURCE_NOT_FOUND");
+  });
+
+  it("toBody() round-trips code/message/details for a v2 code", () => {
+    const err = ApiError.resourceConflict("Session already live.", { session_id: "abc" });
+    expect(err.toBody()).toEqual({ error: { code: "RESOURCE_CONFLICT", message: "Session already live.", details: { session_id: "abc" } } });
+  });
+});
 
 describe("mapPostgresError", () => {
   it("maps a pairing-code unique violation", () => {

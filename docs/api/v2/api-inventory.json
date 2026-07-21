@@ -1,0 +1,19 @@
+{
+  "generated": "2026-07-21",
+  "note": "API v2 inventory — foundation phase (docs/API_V2.md). 'paths' is intentionally empty: no v2 product endpoint is deployed. This file records the shared infrastructure that future v2 endpoints will use, not a set of live routes. 'test' values: 'vitest:<file>' = automated unit test in this repo's suite; 'not-wired' = source exists, intentionally not connected to a live table/endpoint yet.",
+  "paths": [],
+  "sharedInfrastructure": [
+    { "name": "requestV2 client", "file": "src/api/v2/client.ts", "status": "implemented", "test": "vitest:src/api/v2/client.test.ts" },
+    { "name": "success/error envelopes", "file": "src/api/v2/envelopes.ts", "status": "implemented", "test": "vitest:src/api/v2/envelopes.test.ts" },
+    { "name": "request-id policy", "file": "src/api/v2/request.ts", "status": "implemented", "test": "vitest:src/api/v2/request.test.ts" },
+    { "name": "v2 error codes", "file": "src/shared/errors.ts", "status": "implemented (additive to existing ApiError)", "test": "vitest:src/shared/errors.test.ts" },
+    { "name": "Edge Function v2 response helpers", "file": "supabase/functions/_shared/v2/response.ts", "status": "implemented", "test": "deno-check" },
+    { "name": "Edge Function v2 request-id", "file": "supabase/functions/_shared/v2/request.ts", "status": "implemented", "test": "deno-check" },
+    { "name": "Edge Function v2 auth boundary", "file": "supabase/functions/_shared/v2/auth.ts", "status": "implemented (re-exports requireManager, no new resolver)", "test": "deno-check" },
+    { "name": "client-side idempotency key", "file": "src/api/v2/idempotency.ts", "status": "implemented, not-wired (no server store)", "test": "none" },
+    { "name": "server-side idempotency shape", "file": "supabase/functions/_shared/v2/idempotency.ts", "status": "not-wired (no idempotency_keys table live — proposed DDL in docs/API_V2.md)", "test": "deno-check" },
+    { "name": "server-side audit-event shape", "file": "supabase/functions/_shared/v2/audit.ts", "status": "not-wired (no audit_events table live — proposed DDL in docs/API_V2.md)", "test": "deno-check" },
+    { "name": "structured logging", "file": "supabase/functions/_shared/v2/logging.ts", "status": "implemented", "test": "deno-check" },
+    { "name": "scena-api router function", "status": "not created — no v2 product resource exists to route to yet" }
+  ]
+}
