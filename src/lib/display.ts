@@ -60,6 +60,15 @@ function readCache(): DisplayState | null {
   }
 }
 
+/** Read-only accessor for the kiosk route's error boundary — lets a
+ * caught render exception attempt to restore the last known-good display
+ * instead of leaving the screen permanently blank. Added for routing
+ * (src/display/DisplayErrorBoundary.tsx); the caching behavior itself is
+ * unchanged. */
+export function readCachedDisplayState(): DisplayState | null {
+  return readCache();
+}
+
 function writeCache(state: DisplayState) {
   if (state.status === "showing") localStorage.setItem(CACHE_KEY, JSON.stringify(state));
 }

@@ -1,19 +1,21 @@
-// Scena kiosk display — the site a screen opens at /#/display.
+// Scena kiosk display — the route a screen opens at /display (legacy
+// #/display is rewritten to this path by the compatibility bootstrap in
+// src/main.tsx before the router mounts).
 //
-// Minimal functional harness (per this rebuild's scope: backend + kiosk
-// wiring, not visual polish). Boot: register a device credential + show
-// the 6-digit pairing code, poll until claimed. Claimed: poll
-// display-state every few seconds and render whatever layout/tiles come
-// back as plain positioned boxes — enough to prove pairing, display-mode
-// resolution, realtime-driven refresh, and offline caching all work.
-// Debug overlay (press D, or open with ?debug): poll health, cache state.
+// Relocated from src/Display.tsx during the routing pass — every line of
+// logic below is unchanged: device registration, pairing state, polling,
+// offline cache, invalidation subscription, layout/tile rendering, debug
+// overlay. Isolated from the manager route tree by construction: this
+// file imports only from src/lib/display.ts, never from src/auth/* or
+// src/app/* — the kiosk holds no Supabase session and no manager
+// JWT, ever.
 
 import { useEffect, useRef, useState } from "react";
-import { forgetDevice, pollState, registerDevice, storedToken, subscribeToOrgInvalidation, type DisplayState } from "./lib/display";
+import { forgetDevice, pollState, registerDevice, storedToken, subscribeToOrgInvalidation, type DisplayState } from "../lib/display";
 
 const POLL_MS = 4000;
 
-export function DisplayApp() {
+export function DisplayRoute() {
   const [state, setState] = useState<DisplayState | null>(null);
   const [pairCode, setPairCode] = useState<string | null>(null);
   const [pollError, setPollError] = useState(0);
@@ -67,13 +69,12 @@ export function DisplayApp() {
   // broadcast (see src/lib/display.ts#subscribeToOrgInvalidation). This is
   // Realtime *Broadcast*, not `postgres_changes` — this kiosk connection
   // has no Supabase session, so it holds no RLS grant to receive
-  // `postgres_changes` events on any table at all (a prior version of
-  // this file subscribed that way and silently never fired). The
-  // broadcast payload is untrusted and carries no data; it only triggers
-  // an immediate authoritative re-fetch via display-gateway, same as
-  // every interval poll. Missing org_id (not yet claimed) means there's
-  // nothing to subscribe to yet — the 4s interval poll keeps working
-  // regardless and will pick up org_id the moment the screen is claimed.
+  // `postgres_changes` events on any table at all. The broadcast payload
+  // is untrusted and carries no data; it only triggers an immediate
+  // authoritative re-fetch via display-gateway, same as every interval
+  // poll. Missing org_id (not yet claimed) means there's nothing to
+  // subscribe to yet — the 4s interval poll keeps working regardless and
+  // will pick up org_id the moment the screen is claimed.
   const orgId = state && "org_id" in state ? state.org_id : null;
   useEffect(() => {
     if (!orgId) return;
