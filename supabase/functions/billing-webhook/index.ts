@@ -227,11 +227,13 @@ async function finalizeCheckout(admin: any, event: any, checkoutObject: any): Pr
   const sessionId = String(checkoutObject.id ?? "");
   if (!sessionId) throw new Error("Checkout event has no Session ID");
 
-  const { data: checkout, error: checkoutError } = await admin
+  const checkoutResult = await admin
     .from("checkout_sessions")
     .select("user_id,plan_code,workspace_type,billing_mode,stripe_customer_id,status")
     .eq("stripe_checkout_session_id", sessionId)
-    .maybeSingle<CheckoutRow>();
+    .maybeSingle();
+  const checkout = checkoutResult.data as CheckoutRow | null;
+  const checkoutError = checkoutResult.error;
   if (checkoutError || !checkout) throw new Error("Checkout Session is not registered in Scena");
 
   const metadataUserId = String(checkoutObject.metadata?.scena_user_id ?? checkoutObject.client_reference_id ?? "");
@@ -297,7 +299,7 @@ async function finalizeCheckout(admin: any, event: any, checkoutObject: any): Pr
   }
 
   if (checkout.billing_mode === "subscription") {
-    if (!['plus', 'pro', 'max'].includes(String(checkout.plan_code)) || checkout.workspace_type !== "team") {
+    if (!["plus", "pro", "max"].includes(String(checkout.plan_code)) || checkout.workspace_type !== "team") {
       throw new Error("Subscription Checkout has an invalid Team Workspace offering");
     }
     if (String(checkoutObject.mode ?? "") !== "subscription") {
