@@ -358,3 +358,56 @@ The request's own git guardrails forbid deploying anything tonight. `TIMELINE.md
 - **P1**: `package.json` version (`1.0.2`) vs. latest git tag (`v1.0.7`) drift, carried over from Session 2, still unresolved.
 
 **No commit, no push, no tag, no deploy, no migration, no production mutation this session.**
+
+## Session 4 — 2026-07-22 (production deployment: pairing chain repair)
+
+### Starting state
+
+`v.1.0.8` (commit `04b14cee394c943586f2292e8184fd9a62e7e001`) pushed to `origin/main` by the owner between Session 3 and this session — contains Session 3's `assets.ts`/`dashboard.ts` work. Note the stray dot in the tag/title (`v.1.0.8` not `v1.0.8`) — owner-confirmed as intentional-enough to leave alone; next commit will be `v1.0.9` with no rewrite of `v.1.0.8`. Verified remote CI for this commit via `gh api`: all 3 jobs (`API contract validation`, `Application`, `Edge Functions (deno check)`) — `conclusion: success`. One benign Node 20→24 runner-deprecation warning annotation, unrelated to any code.
+
+### Critical finding, before doing the approved task
+
+Was asked to deploy `screen-register` (approved last session as the #1 P0 blocker). Before doing so, pulled the *actual deployed source* of the other "already deployed" functions via `mcp__supabase__get_edge_function` — not just their deployment status — for the first time. Found:
+
+- **`screen-claim` (deployed, v5) and `display-gateway` (deployed, v5)** were running an entirely different, older implementation querying a `display_connections` table with columns (`pair_code_hash`, `assigned_scene_id`, `claimed_at`, `token_hash`, `current_scene_id` on `display_sessions`, `storage_path` on `presentation_assets`). **Confirmed via direct SQL (`information_schema.tables`/`.columns`) that `display_connections` does not exist and `presentation_assets` has no `storage_path`/`scene_id` column.** Both deployed functions would 500 on any real request.
+- **`presentation-upload` (deployed, v5)** used direct Supabase Storage (`createSignedUploadUrl` on a `"presentations"` bucket) with a `presentation_assets.scene_id`/`storage_path` shape — a different upload architecture than the repo's LXC-broker design, and a different response contract than `src/domain/assets.ts` (built in Session 3) assumes. Asset upload was broken end to end, not merely "no UI yet."
+- **`billing-checkout`, `billing-portal`, `billing-webhook`** (checked for comparison) do match the current schema — correctly deployed.
+- **`mjcc-sso-exchange`** is now a deliberate `404 ENDPOINT_REMOVED` stub — cleanly neutered, not the `410 Gone` behavior Session 2 saw on an even older version.
+
+This means Sessions 2–3's "live" classification was checking *deployment status* (`list_edge_functions`) but never *deployed content* — a real gap, exactly the "deployed ≠ functionally verified" distinction this documentation set has been building toward without actually applying it here. Reported this to the owner instead of proceeding with the originally-approved single-function deploy, since deploying only `screen-register` would not have fixed pairing (the deployed `screen-claim`/`display-gateway` would still fail against a nonexistent table).
+
+### Owner decision
+
+Redeploy all 4 from current repo source: `screen-register` (new), `screen-claim`, `display-gateway`, `presentation-upload` — all already `deno check`-clean against the current schema (verified Session 3).
+
+### What was deployed
+
+| Function | Before | After | verify_jwt |
+|---|---|---|---|
+| `screen-register` | not deployed | v1 (new) | `false` |
+| `display-gateway` | v5 (stale, `display_connections`) | v6 (current source) | `false` |
+| `screen-claim` | v5 (stale, `display_connections`) | v6 (current source) | `true` |
+| `presentation-upload` | v5 (stale, Storage-based) | v6 (current source, LXC-broker) | `true` |
+
+All 4 deployed via `mcp__supabase__deploy_edge_function` with the exact file contents already `deno check`-verified in Session 3 (entrypoint + full `_shared/*` dependency graph per function, traced by reading every import chain — `http.ts`, `adminClient.ts`, `crypto.ts`, `errors.ts`, `managerAuth.ts`, `broadcast.ts`, `displayState.ts`). `list_edge_functions` confirms all 8 functions `ACTIVE` post-deploy.
+
+### Smoke test (production, register → gateway leg only)
+
+```
+POST /functions/v1/screen-register  {}
+  -> {"screen_id":"648c9c38-...","device_token":"01d2cb...","code":"500604","expires_in":1800}
+POST /functions/v1/display-gateway  {"device_token":"01d2cb..."}
+  -> {"status":"pending","screen_name":"New Screen"}
+POST /functions/v1/display-gateway  {"device_token":"<bogus>"}
+  -> {"error":{"code":"DEVICE_CREDENTIAL_INVALID","message":"Unrecognized device."}}
+```
+
+Register → gateway leg confirmed working end to end against the live project. **This created one real `screens` row (`648c9c38-d2d4-4394-936a-902b5ecc8050`, status `pairing`) and one real `screen_pairing_codes` row (code `500604`, expires ~30 min from deploy time)** — a normal, harmless product of exercising the function as designed, not test data injected elsewhere. The pairing code is still valid for a short window if the owner wants to manually complete the `screen-claim` leg via the real `/app/screens/pair` UI with a real manager session — not attempted here, since that requires a real authenticated manager JWT this session doesn't have and shouldn't fabricate.
+
+### What was NOT verified this session
+
+- **`screen-claim`'s live behavior** — requires a real manager JWT; not tested (see above — a live pairing code exists if the owner wants to complete this by hand).
+- **`presentation-upload`'s live behavior** — requires `LXC_PRESENTATIONS_URL`, `LXC_PRESENTATIONS_API_KEY`, `SCENA_LXC_CALLBACK_SECRET` to be configured as Supabase secrets. No tool available this session lists configured secret *names* (only reads/sets function code), so whether these exist was not checked. If they're missing, `presentation-upload`'s `action: "create"` will fail with a clean `INTERNAL_ERROR` (via `requiredEnv` throwing) rather than silently doing the wrong thing — but this is unverified either way.
+- `presentation-callback` and `automations-run` remain **not deployed** — unchanged from Sessions 2–3, not part of tonight's approved scope.
+
+### No commit, no push, no tag, no migration this session — deployment only, explicitly owner-authorized in two rounds (screen-register alone, then all 4 after the drift finding was reported).
