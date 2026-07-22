@@ -8,9 +8,22 @@ const cors = {
   "content-type": "application/json; charset=utf-8",
 };
 
+type Stage =
+  | "configuration"
+  | "authentication"
+  | "validation"
+  | "membership_check"
+  | "plan_lookup"
+  | "customer_creation"
+  | "checkout_creation"
+  | "database_persistence";
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
   if (req.method !== "POST") return json({ error: { code: "METHOD_NOT_ALLOWED", message: "POST required." } }, 405);
+
+  const requestId = crypto.randomUUID();
+  let stage: Stage = "configuration";
 
   try {
     const supabaseUrl = required("SUPABASE_URL");
@@ -26,30 +39,35 @@ Deno.serve(async (req: Request) => {
     });
     const admin = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } });
 
+    stage = "authentication";
     const { data: userData, error: userError } = await userClient.auth.getUser();
-    if (userError || !userData.user?.email) return json({ error: { code: "UNAUTHENTICATED", message: "Sign in is required." } }, 401);
+    if (userError || !userData.user?.email) return json({ error: { code: "UNAUTHENTICATED", message: "Sign in is required.", request_id: requestId } }, 401);
     const user = userData.user;
     const email = user.email!;
 
+    stage = "validation";
     const body = await req.json() as Record<string, unknown>;
     const planCode = text(body.plan_code).toLowerCase();
     const teamName = text(body.team_name);
     const teamSlug = text(body.team_slug).toLowerCase();
-    if (!['plus','pro','max'].includes(planCode)) return json({ error: { code: "VALIDATION_FAILED", message: "Choose Plus, Pro, or Max." } }, 400);
-    if (!teamName || teamName.length > 120) return json({ error: { code: "VALIDATION_FAILED", message: "Team name is required." } }, 400);
-    if (!/^[a-z0-9][a-z0-9-]{1,62}[a-z0-9]$/.test(teamSlug)) return json({ error: { code: "VALIDATION_FAILED", message: "Team slug must be 3-64 lowercase letters, numbers, or hyphens." } }, 400);
+    if (!['plus','pro','max'].includes(planCode)) return json({ error: { code: "VALIDATION_FAILED", message: "Choose Plus, Pro, or Max.", request_id: requestId } }, 400);
+    if (!teamName || teamName.length > 120) return json({ error: { code: "VALIDATION_FAILED", message: "Team name is required.", request_id: requestId } }, 400);
+    if (!/^[a-z0-9][a-z0-9-]{1,62}[a-z0-9]$/.test(teamSlug)) return json({ error: { code: "VALIDATION_FAILED", message: "Team slug must be 3-64 lowercase letters, numbers, or hyphens.", request_id: requestId } }, 400);
 
+    stage = "membership_check";
     const { data: existingMembership } = await admin.from("organization_members").select("org_id").eq("user_id", user.id).eq("status", "active").maybeSingle();
-    if (existingMembership) return json({ error: { code: "TEAM_LIMIT_REACHED", message: "This account already belongs to an active Team." } }, 409);
+    if (existingMembership) return json({ error: { code: "TEAM_LIMIT_REACHED", message: "This account already belongs to an active Team.", request_id: requestId } }, 409);
 
+    stage = "plan_lookup";
     const { data: plan, error: planError } = await admin.from("plans").select("plan_code,stripe_price_id,is_active").eq("plan_code", planCode).single();
-    if (planError || !plan?.is_active) return json({ error: { code: "PLAN_REQUIRED", message: "That plan is unavailable." } }, 400);
-    if (!plan.stripe_price_id) return json({ error: { code: "PRICE_NOT_CONFIGURED", message: "This plan is not available for checkout yet." } }, 503);
+    if (planError || !plan?.is_active) return json({ error: { code: "PLAN_REQUIRED", message: "That plan is unavailable.", request_id: requestId } }, 400);
+    if (!plan.stripe_price_id) return json({ error: { code: "PRICE_NOT_CONFIGURED", message: "This plan is not available for checkout yet.", request_id: requestId } }, 503);
 
     await admin.from("checkout_sessions").update({ status: "expired", updated_at: new Date().toISOString() }).eq("user_id", user.id).eq("status", "open").lt("expires_at", new Date().toISOString());
     const { data: openCheckout } = await admin.from("checkout_sessions").select("stripe_checkout_session_id").eq("user_id", user.id).eq("status", "open").maybeSingle();
-    if (openCheckout) return json({ error: { code: "RESOURCE_CONFLICT", message: "A checkout is already open for this account." } }, 409);
+    if (openCheckout) return json({ error: { code: "RESOURCE_CONFLICT", message: "A checkout is already open for this account.", request_id: requestId } }, 409);
 
+    stage = "customer_creation";
     let stripeCustomerId: string;
     const { data: customerRow } = await admin.from("billing_customers").select("stripe_customer_id").eq("user_id", user.id).maybeSingle();
     if (customerRow?.stripe_customer_id) {
@@ -65,6 +83,7 @@ Deno.serve(async (req: Request) => {
       if (customerInsertError) throw customerInsertError;
     }
 
+    stage = "checkout_creation";
     const session = await stripePost(stripeKey, "/v1/checkout/sessions", {
       mode: "subscription",
       customer: stripeCustomerId,
@@ -85,6 +104,7 @@ Deno.serve(async (req: Request) => {
       billing_address_collection: "auto",
     });
 
+    stage = "database_persistence";
     const expiresAt = typeof session.expires_at === "number" ? new Date(session.expires_at * 1000).toISOString() : null;
     const { error: checkoutInsertError } = await admin.from("checkout_sessions").insert({
       stripe_checkout_session_id: session.id,
@@ -98,10 +118,22 @@ Deno.serve(async (req: Request) => {
     });
     if (checkoutInsertError) throw checkoutInsertError;
 
-    return json({ checkout_url: session.url, checkout_session_id: session.id }, 200);
+    return json({ checkout_url: session.url, checkout_session_id: session.id, request_id: requestId }, 200);
   } catch (error) {
-    console.error("billing-checkout failed", error);
-    return json({ error: { code: "CHECKOUT_FAILED", message: "Checkout could not be started." } }, 500);
+    const errorCode = stage === "configuration" ? "MISSING_CONFIGURATION" : "CHECKOUT_FAILED";
+    // Structured, secret-free failure log — never the error's own message when
+    // stage is "configuration" (that message names the missing env var).
+    console.error(JSON.stringify({
+      event: "billing_checkout_failed",
+      request_id: requestId,
+      stage,
+      error_code: errorCode,
+    }));
+    const status = stage === "configuration" ? 503 : 500;
+    const message = stage === "configuration"
+      ? "Checkout is not available right now. Try again shortly."
+      : "Checkout could not be started.";
+    return json({ error: { code: errorCode, message, request_id: requestId } }, status);
   }
 });
 
