@@ -109,21 +109,27 @@ A feature is not finished when the demo works. It is finished when it can be sup
 ## 4. Definitions
 
 ### 4.1 Paying Team
+
 A valid Stripe subscription, a verified subscription record, an active Plus/Pro/Max entitlement, and a customer who is not using an internal-only test subscription. Free internal Teams, founder tests, and manually inserted records do not count.
 
 ### 4.2 Unrelated external customer
+
 Not Miah, not a KpnSolute internal workspace, not an MJCC internal project, not a close collaborator receiving indefinite free service, not a synthetic test account. A discounted pilot may count only when the customer is real, expectations are documented, they use Scena in normal operations, they provide meaningful feedback, and there is a path to paid continuation.
 
 ### 4.3 Active Team
+
 Has completed a meaningful action during the measurement period — updated a Board, ran a Session, had a Display retrieve content, used automation, invited a member. Payment alone does not prove product adoption.
 
 ### 4.4 Live Display
+
 Securely paired, belongs to the correct Team, has displayed real customer content, has reported recent heartbeats, does not require routine manual database intervention.
 
 ### 4.5 Organic upgrade
+
 A customer moves to a higher plan because of real usage or capability need. Does not include a temporary test, an internal account change, a staff-performed upgrade without customer intent, a free promotional assignment, or a forced upgrade from an incorrect quota.
 
 ### 4.6 Validated feature request
+
 Has an identified customer or prospect, a clear problem statement, a current workaround, business impact, frequency or volume, evidence of willingness to adopt or pay, and a responsible person who recorded it.
 
 ---
@@ -133,7 +139,7 @@ Has an identified customer or prospect, a clear problem statement, a current wor
 Every request must be classified before review.
 
 | Category | Examples | Note |
-|---|---|---|
+| --- | --- | --- |
 | A: Reliability and safety | Auth failures, billing defects, cross-Team access risk, Display offline recovery, backups, monitoring, audit events | May override normal roadmap sequencing |
 | B: Existing service obligation | Capability already promised in Plus/Pro/Max, documented support commitment, published integration, paid pilot commitment | Treated as delivery work, not future expansion |
 | C: Retention improvement | Better scheduling, proof of play, Display diagnostics, faster content updates, Team permissions | |
@@ -149,7 +155,7 @@ Every request must be classified before review.
 Scena's public availability must be maintained separately from plan design.
 
 | Plan | Designed | May be publicly sold when |
-|---|---|---|
+| --- | --- | --- |
 | Plus | Yes | Checkout, Team provisioning, Boards, Displays, and one concurrent Session work |
 | Pro | Yes | Plus is stable and Pro limits plus daily/weekly automation work |
 | Max | Yes | Pro is stable and Max groups, advanced automation, ACL, and higher limits work |
@@ -180,15 +186,16 @@ Complete Board creation; complete Display registration and pairing; complete one
 Logging; request IDs; GitHub Actions; backups; security checks; customer onboarding record; support escalation path; capability register.
 
 **Exit condition** — Stage 0 is complete only when:
-- One unrelated paying Team is active.
-- At least one real Display shows customer content.
-- Customer completed payment without staff inserting billing records.
-- Team was provisioned by verified webhook.
-- Customer completed at least one normal operation themselves.
-- Display remained operational for an agreed observation period.
-- No manual database intervention was required after onboarding began.
-- Customer understands their plan and support path.
-- No unresolved Priority 1 issue exists.
+
+* One unrelated paying Team is active.
+* At least one real Display shows customer content.
+* Customer completed payment without staff inserting billing records.
+* Team was provisioned by verified webhook.
+* Customer completed at least one normal operation themselves.
+* Display remained operational for an agreed observation period.
+* No manual database intervention was required after onboarding began.
+* Customer understands their plan and support path.
+* No unresolved Priority 1 issue exists.
 
 Recommended observation period: at least 14 consecutive days for initial validation, preferably 30 days before declaring repeatability proven.
 
@@ -213,14 +220,15 @@ Recommended observation period: at least 14 consecutive days for initial validat
 **Recommended metrics:** Sign-up to Checkout rate, Checkout completion rate, Checkout-to-live-Display time, median onboarding time, pairing success rate, number of manual interventions, weekly active Teams, active Displays, Board updates per Team, Sessions started, support requests per Team, upgrade reasons, cancellation reasons.
 
 **Exit condition** — Stage 1 is complete when:
-- At least three unrelated paying Teams are active.
-- Those Teams represent at least two genuine verticals or use cases.
-- At least two Teams complete most onboarding without database intervention.
-- At least one organic upgrade occurs.
-- At least one customer remains active for a meaningful retention period.
-- Core support issues are documented.
-- No recurring onboarding failure remains unresolved.
-- Proof-of-play records are being generated reliably.
+
+* At least three unrelated paying Teams are active.
+* Those Teams represent at least two genuine verticals or use cases.
+* At least two Teams complete most onboarding without database intervention.
+* At least one organic upgrade occurs.
+* At least one customer remains active for a meaningful retention period.
+* Core support issues are documented.
+* No recurring onboarding failure remains unresolved.
+* Proof-of-play records are being generated reliably.
 
 Recommended retention evidence: at least 60 days of continued use for one Team, at least 30 days for the remaining Teams.
 
@@ -245,13 +253,14 @@ Recommended retention evidence: at least 60 days of continued use for one Team, 
 **Primary work — Analytics:** Expand proof of play into Display uptime, content exposure duration, Session history, failed Display retrieval, automation success, Board usage, Display health trends. Analytics must not claim audience measurement unless Scena actually collects audience evidence.
 
 **Exit condition** — Stage 2 is complete when:
-- Max has paying customers.
-- Max revenue is tied to actual use of groups, automation, ACL, or advanced Session controls.
-- At least one customer uses automation repeatedly.
-- At least one customer uses multiple Displays in coordinated operation.
-- Advanced features reduce real manual work.
-- Advanced features do not create unsustainable support load.
-- Max customers retain or expand usage.
+
+* Max has paying customers.
+* Max revenue is tied to actual use of groups, automation, ACL, or advanced Session controls.
+* At least one customer uses automation repeatedly.
+* At least one customer uses multiple Displays in coordinated operation.
+* Advanced features reduce real manual work.
+* Advanced features do not create unsustainable support load.
+* Max customers retain or expand usage.
 
 ---
 
@@ -311,7 +320,7 @@ Useful request: *"Restaurant owner spends 45 minutes daily converting one menu i
 Score each proposal from 0 to 5.
 
 | Criterion | Question |
-|---|---|
+| --- | --- |
 | Customer evidence | How many real customers have demonstrated the need? |
 | Revenue impact | Will it generate or protect meaningful revenue? |
 | Retention impact | Will it reduce churn or increase repeated use? |
@@ -343,11 +352,11 @@ The score supports judgment. It does not replace judgment.
 
 Every reviewed proposal receives one of these outcomes:
 
-- **Approved** — authorized for planning and delivery. Must include scope, customer problem, success metric, owner, target stage, dependencies, commercial treatment, Definition of Done.
-- **Experiment** — a limited, time-boxed test. Must define hypothesis, duration, maximum engineering effort, participants, success metric, failure metric, whether it may reach production customers, cleanup plan.
-- **Deferred** — the problem may be valid, but entry conditions aren't met, evidence is insufficient, higher-priority obligations remain, or operational risk is too high. Set a review trigger, not merely "later."
-- **Rejected** — inconsistent with product direction, customer safety, security, economics, current service model, or legal responsibilities. Record the reason.
-- **Needs discovery** — the problem is unclear and requires customer interviews, usage analysis, prototype, technical investigation, or pricing research.
+* **Approved** — authorized for planning and delivery. Must include scope, customer problem, success metric, owner, target stage, dependencies, commercial treatment, Definition of Done.
+* **Experiment** — a limited, time-boxed test. Must define hypothesis, duration, maximum engineering effort, participants, success metric, failure metric, whether it may reach production customers, cleanup plan.
+* **Deferred** — the problem may be valid, but entry conditions aren't met, evidence is insufficient, higher-priority obligations remain, or operational risk is too high. Set a review trigger, not merely "later."
+* **Rejected** — inconsistent with product direction, customer safety, security, economics, current service model, or legal responsibilities. Record the reason.
+* **Needs discovery** — the problem is unclear and requires customer interviews, usage analysis, prototype, technical investigation, or pricing research.
 
 ---
 
@@ -369,10 +378,10 @@ Every stage transition must document: previous stage, new stage, decision date, 
 
 ## 13. Exceptions
 
-- **Security or legal issue** — may interrupt the staged roadmap immediately (cross-Team data access, payment errors, credential leaks, data-loss risk, fraud, legal takedown).
-- **Customer-specific contract** — approved outside the stage sequence only when the work is separately priced, ownership is clear, it doesn't weaken the core product, support obligations are documented, it doesn't create a secret fork, reusability has been evaluated, and the service owner explicitly approves it.
-- **Strategic partnership** — may justify earlier work only when the partner provides real distribution or revenue, commitments are written, scope is limited, opportunity cost is documented, and Scena retains control of its core platform.
-- **Competitor pressure** — not enough evidence by itself. Investigate whether Scena customers care, whether the feature drives purchase, whether it creates retention, whether Scena can support it, and whether copying it harms focus.
+* **Security or legal issue** — may interrupt the staged roadmap immediately (cross-Team data access, payment errors, credential leaks, data-loss risk, fraud, legal takedown).
+* **Customer-specific contract** — approved outside the stage sequence only when the work is separately priced, ownership is clear, it doesn't weaken the core product, support obligations are documented, it doesn't create a secret fork, reusability has been evaluated, and the service owner explicitly approves it.
+* **Strategic partnership** — may justify earlier work only when the partner provides real distribution or revenue, commitments are written, scope is limited, opportunity cost is documented, and Scena retains control of its core platform.
+* **Competitor pressure** — not enough evidence by itself. Investigate whether Scena customers care, whether the feature drives purchase, whether it creates retention, whether Scena can support it, and whether copying it harms focus.
 
 ---
 
@@ -380,9 +389,9 @@ Every stage transition must document: previous stage, new stage, decision date, 
 
 While Scena remains early stage, use this operating default:
 
-- **60%** current-stage delivery and reliability.
-- **25%** customer-requested improvements.
-- **15%** experiments and research.
+* **60%** current-stage delivery and reliability.
+* **25%** customer-requested improvements.
+* **15%** experiments and research.
 
 During an outage, launch blocker, or security issue, reliability may temporarily consume all available capacity.
 
@@ -427,32 +436,34 @@ Every roadmap item must have one status: Researching, Proposed, Approved, In des
 ## 18. Definition of Done
 
 **A roadmap stage is complete only when:**
-- [ ] Every exit condition is supported by recorded evidence.
-- [ ] Current-plan obligations are fulfilled.
-- [ ] No unresolved Priority 1 blocker exists.
-- [ ] Support can handle the stage's capabilities.
-- [ ] Security boundaries are tested.
-- [ ] Billing treatment is defined.
-- [ ] Documentation reflects actual availability.
-- [ ] Sales language reflects actual availability.
-- [ ] Customer-facing pricing reflects actual availability.
-- [ ] The next stage's entry conditions are met.
-- [ ] The transition decision is recorded.
-- [ ] The next review date is recorded.
+
+* [ ] Every exit condition is supported by recorded evidence.
+* [ ] Current-plan obligations are fulfilled.
+* [ ] No unresolved Priority 1 blocker exists.
+* [ ] Support can handle the stage's capabilities.
+* [ ] Security boundaries are tested.
+* [ ] Billing treatment is defined.
+* [ ] Documentation reflects actual availability.
+* [ ] Sales language reflects actual availability.
+* [ ] Customer-facing pricing reflects actual availability.
+* [ ] The next stage's entry conditions are met.
+* [ ] The transition decision is recorded.
+* [ ] The next review date is recorded.
 
 **A capability expansion is complete only when:**
-- [ ] The capability has a clear customer problem.
-- [ ] The capability has a defined owner.
-- [ ] The capability has an implementation Definition of Done.
-- [ ] Security and privacy implications were reviewed.
-- [ ] Billing and entitlement behavior are defined.
-- [ ] Plan availability is updated.
-- [ ] Customer documentation exists.
-- [ ] Support documentation exists.
-- [ ] Analytics or usage evidence exists.
-- [ ] Rollback behavior is defined.
-- [ ] The capability has passed customer acceptance.
-- [ ] It is labeled accurately as pilot, limited availability, or generally available.
+
+* [ ] The capability has a clear customer problem.
+* [ ] The capability has a defined owner.
+* [ ] The capability has an implementation Definition of Done.
+* [ ] Security and privacy implications were reviewed.
+* [ ] Billing and entitlement behavior are defined.
+* [ ] Plan availability is updated.
+* [ ] Customer documentation exists.
+* [ ] Support documentation exists.
+* [ ] Analytics or usage evidence exists.
+* [ ] Rollback behavior is defined.
+* [ ] The capability has passed customer acceptance.
+* [ ] It is labeled accurately as pilot, limited availability, or generally available.
 
 ---
 
