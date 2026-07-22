@@ -32,7 +32,9 @@ export interface CheckoutResult {
 }
 
 export async function listActiveOfferings(): Promise<Plan[]> {
-  const supabase = requireSupabase();
+  // The generated Database type is replaced separately from the live Supabase
+  // schema. Keep this query isolated until that generated artifact is refreshed.
+  const supabase = requireSupabase() as any;
   const { data, error } = await supabase
     .from("plans")
     .select("plan_code, name, unit_amount, currency, billing_interval, workspace_type, billing_mode")
@@ -81,12 +83,16 @@ export async function startPersonalWorkspaceCheckout(
 
 /** Backward-compatible Team helper used by the existing pricing screen. */
 export async function startTeamCheckout(
-  planCode: "plus" | "pro" | "max",
+  planCode: string,
   teamName: string,
   teamSlug?: string,
 ): Promise<CheckoutResult> {
+  if (!(["plus", "pro", "max"] as string[]).includes(planCode)) {
+    throw Object.assign(new Error("Choose Plus, Pro, or Max."), { code: "VALIDATION_FAILED" });
+  }
+
   return startWorkspaceCheckout({
-    offering_code: planCode,
+    offering_code: planCode as "plus" | "pro" | "max",
     workspace_name: teamName,
     workspace_slug: teamSlug,
   });
