@@ -6,21 +6,34 @@ const cors = {
   "access-control-allow-headers": "authorization, x-client-info, apikey, content-type",
   "access-control-allow-methods": "POST, OPTIONS",
   "content-type": "application/json; charset=utf-8",
+  "cache-control": "no-store",
 };
 
+type BillingMode = "one_time" | "subscription";
+type WorkspaceType = "personal" | "team";
 type Stage =
   | "configuration"
   | "authentication"
   | "validation"
-  | "membership_check"
-  | "plan_lookup"
+  | "offering_lookup"
+  | "availability_check"
   | "customer_creation"
   | "checkout_creation"
   | "database_persistence";
 
+type Offering = {
+  plan_code: string;
+  stripe_price_id: string | null;
+  workspace_type: WorkspaceType;
+  billing_mode: "free" | BillingMode;
+  is_active: boolean;
+};
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
-  if (req.method !== "POST") return json({ error: { code: "METHOD_NOT_ALLOWED", message: "POST required." } }, 405);
+  if (req.method !== "POST") {
+    return json({ error: { code: "METHOD_NOT_ALLOWED", message: "POST required." } }, 405);
+  }
 
   const requestId = crypto.randomUUID();
   let stage: Stage = "configuration";
@@ -37,97 +50,216 @@ Deno.serve(async (req: Request) => {
       global: { headers: { Authorization: authorization } },
       auth: { persistSession: false, autoRefreshToken: false },
     });
-    const admin = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } });
+    const admin = createClient(supabaseUrl, serviceKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
 
     stage = "authentication";
     const { data: userData, error: userError } = await userClient.auth.getUser();
-    if (userError || !userData.user?.email) return json({ error: { code: "UNAUTHENTICATED", message: "Sign in is required.", request_id: requestId } }, 401);
+    if (userError || !userData.user?.email) {
+      return json({ error: { code: "UNAUTHENTICATED", message: "Sign in is required.", request_id: requestId } }, 401);
+    }
     const user = userData.user;
-    const email = user.email!;
 
     stage = "validation";
     const body = await req.json() as Record<string, unknown>;
-    const planCode = text(body.plan_code).toLowerCase();
-    const teamName = text(body.team_name);
-    const teamSlug = text(body.team_slug).toLowerCase();
-    if (!['plus','pro','max'].includes(planCode)) return json({ error: { code: "VALIDATION_FAILED", message: "Choose Plus, Pro, or Max.", request_id: requestId } }, 400);
-    if (!teamName || teamName.length > 120) return json({ error: { code: "VALIDATION_FAILED", message: "Team name is required.", request_id: requestId } }, 400);
-    if (!/^[a-z0-9][a-z0-9-]{1,62}[a-z0-9]$/.test(teamSlug)) return json({ error: { code: "VALIDATION_FAILED", message: "Team slug must be 3-64 lowercase letters, numbers, or hyphens.", request_id: requestId } }, 400);
+    const offeringCode = text(body.offering_code || body.plan_code).toLowerCase();
+    const workspaceName = text(body.workspace_name || body.team_name);
+    const suppliedSlug = text(body.workspace_slug || body.team_slug).toLowerCase();
 
-    stage = "membership_check";
-    const { data: existingMembership } = await admin.from("organization_members").select("org_id").eq("user_id", user.id).eq("status", "active").maybeSingle();
-    if (existingMembership) return json({ error: { code: "TEAM_LIMIT_REACHED", message: "This account already belongs to an active Team.", request_id: requestId } }, 409);
+    if (!['personal_additional', 'plus', 'pro', 'max'].includes(offeringCode)) {
+      return json({ error: { code: "VALIDATION_FAILED", message: "Choose an additional Personal Workspace, Plus, Pro, or Max.", request_id: requestId } }, 400);
+    }
+    if (!workspaceName || workspaceName.length > 120) {
+      return json({ error: { code: "VALIDATION_FAILED", message: "Workspace name is required and must be at most 120 characters.", request_id: requestId } }, 400);
+    }
+    if (suppliedSlug && !validSlug(suppliedSlug)) {
+      return json({ error: { code: "VALIDATION_FAILED", message: "Workspace slug must be 3-64 lowercase letters, numbers, or hyphens.", request_id: requestId } }, 400);
+    }
 
-    stage = "plan_lookup";
-    const { data: plan, error: planError } = await admin.from("plans").select("plan_code,stripe_price_id,is_active").eq("plan_code", planCode).single();
-    if (planError || !plan?.is_active) return json({ error: { code: "PLAN_REQUIRED", message: "That plan is unavailable.", request_id: requestId } }, 400);
-    if (!plan.stripe_price_id) return json({ error: { code: "PRICE_NOT_CONFIGURED", message: "This plan is not available for checkout yet.", request_id: requestId } }, 503);
+    stage = "offering_lookup";
+    const { data: offering, error: offeringError } = await admin
+      .from("plans")
+      .select("plan_code,stripe_price_id,workspace_type,billing_mode,is_active")
+      .eq("plan_code", offeringCode)
+      .single<Offering>();
 
-    await admin.from("checkout_sessions").update({ status: "expired", updated_at: new Date().toISOString() }).eq("user_id", user.id).eq("status", "open").lt("expires_at", new Date().toISOString());
-    const { data: openCheckout } = await admin.from("checkout_sessions").select("stripe_checkout_session_id").eq("user_id", user.id).eq("status", "open").maybeSingle();
-    if (openCheckout) return json({ error: { code: "RESOURCE_CONFLICT", message: "A checkout is already open for this account.", request_id: requestId } }, 409);
+    if (offeringError || !offering?.is_active || offering.billing_mode === "free") {
+      return json({ error: { code: "OFFERING_UNAVAILABLE", message: "That Workspace offering is unavailable.", request_id: requestId } }, 400);
+    }
+    if (!offering.stripe_price_id) {
+      return json({ error: { code: "PRICE_NOT_CONFIGURED", message: "This offering is not available for Checkout yet.", request_id: requestId } }, 503);
+    }
+
+    const expectedShape = offeringCode === "personal_additional"
+      ? offering.workspace_type === "personal" && offering.billing_mode === "one_time"
+      : offering.workspace_type === "team" && offering.billing_mode === "subscription";
+    if (!expectedShape) {
+      return json({ error: { code: "OFFERING_CONFIGURATION_INVALID", message: "This offering is configured incorrectly.", request_id: requestId } }, 503);
+    }
+
+    const workspaceSlug = suppliedSlug || generatedSlug(workspaceName);
+
+    stage = "availability_check";
+    const now = new Date().toISOString();
+    await admin
+      .from("checkout_sessions")
+      .update({ status: "expired", updated_at: now })
+      .eq("user_id", user.id)
+      .eq("status", "open")
+      .lt("expires_at", now);
+
+    const { data: openCheckout } = await admin
+      .from("checkout_sessions")
+      .select("stripe_checkout_session_id")
+      .eq("user_id", user.id)
+      .eq("status", "open")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (openCheckout) {
+      return json({ error: { code: "CHECKOUT_ALREADY_OPEN", message: "A Checkout Session is already open for this account.", request_id: requestId } }, 409);
+    }
+
+    const { data: existingWorkspace } = await admin
+      .from("organizations")
+      .select("id")
+      .eq("slug", workspaceSlug)
+      .maybeSingle();
+    if (existingWorkspace) {
+      return json({ error: { code: "WORKSPACE_SLUG_TAKEN", message: "That Workspace slug is already in use.", request_id: requestId } }, 409);
+    }
+
+    const { data: reservedSlug } = await admin
+      .from("checkout_sessions")
+      .select("id")
+      .eq("requested_workspace_slug", workspaceSlug)
+      .eq("status", "open")
+      .limit(1)
+      .maybeSingle();
+    if (reservedSlug) {
+      return json({ error: { code: "WORKSPACE_SLUG_RESERVED", message: "That Workspace slug is currently reserved by another Checkout.", request_id: requestId } }, 409);
+    }
 
     stage = "customer_creation";
     let stripeCustomerId: string;
-    const { data: customerRow } = await admin.from("billing_customers").select("stripe_customer_id").eq("user_id", user.id).maybeSingle();
+    const { data: customerRow } = await admin
+      .from("billing_customers")
+      .select("stripe_customer_id")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
     if (customerRow?.stripe_customer_id) {
-      stripeCustomerId = customerRow.stripe_customer_id;
+      stripeCustomerId = String(customerRow.stripe_customer_id);
     } else {
       const customer = await stripePost(stripeKey, "/v1/customers", {
-        email,
+        email: user.email!,
         "metadata[scena_user_id]": user.id,
         "metadata[product]": "scena",
-      });
+      }, `scena-customer-${user.id}`);
       stripeCustomerId = String(customer.id);
-      const { error: customerInsertError } = await admin.from("billing_customers").insert({ user_id: user.id, stripe_customer_id: stripeCustomerId });
+
+      const { error: customerInsertError } = await admin
+        .from("billing_customers")
+        .upsert({ user_id: user.id, stripe_customer_id: stripeCustomerId }, { onConflict: "user_id", ignoreDuplicates: true });
       if (customerInsertError) throw customerInsertError;
+
+      const { data: persistedCustomer } = await admin
+        .from("billing_customers")
+        .select("stripe_customer_id")
+        .eq("user_id", user.id)
+        .single();
+      stripeCustomerId = String(persistedCustomer?.stripe_customer_id || stripeCustomerId);
     }
 
     stage = "checkout_creation";
-    const session = await stripePost(stripeKey, "/v1/checkout/sessions", {
-      mode: "subscription",
+    const checkoutAttemptId = crypto.randomUUID();
+    const commonMetadata: Record<string, string> = {
+      "metadata[product]": "scena",
+      "metadata[scena_user_id]": user.id,
+      "metadata[offering_code]": offeringCode,
+      "metadata[workspace_type]": offering.workspace_type,
+      "metadata[billing_mode]": offering.billing_mode,
+      "metadata[workspace_name]": workspaceName,
+      "metadata[workspace_slug]": workspaceSlug,
+      "metadata[checkout_attempt_id]": checkoutAttemptId,
+    };
+
+    const checkoutValues: Record<string, string> = {
+      mode: offering.billing_mode === "one_time" ? "payment" : "subscription",
       customer: stripeCustomerId,
-      "line_items[0][price]": plan.stripe_price_id,
+      "line_items[0][price]": offering.stripe_price_id,
       "line_items[0][quantity]": "1",
       success_url: `${appUrl}/billing/processing?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${appUrl}/pricing?checkout=cancelled`,
       client_reference_id: user.id,
-      "metadata[scena_user_id]": user.id,
-      "metadata[plan_code]": planCode,
-      "metadata[team_name]": teamName,
-      "metadata[team_slug]": teamSlug,
-      "subscription_data[metadata][scena_user_id]": user.id,
-      "subscription_data[metadata][plan_code]": planCode,
-      "subscription_data[metadata][team_name]": teamName,
-      "subscription_data[metadata][team_slug]": teamSlug,
       allow_promotion_codes: "true",
       billing_address_collection: "auto",
-    });
+      ...commonMetadata,
+    };
+
+    if (offering.billing_mode === "one_time") {
+      checkoutValues["payment_method_types[0]"] = "card";
+      checkoutValues["payment_intent_data[metadata][product]"] = "scena";
+      checkoutValues["payment_intent_data[metadata][scena_user_id]"] = user.id;
+      checkoutValues["payment_intent_data[metadata][offering_code]"] = offeringCode;
+      checkoutValues["payment_intent_data[metadata][workspace_type]"] = offering.workspace_type;
+      checkoutValues["payment_intent_data[metadata][workspace_name]"] = workspaceName;
+      checkoutValues["payment_intent_data[metadata][workspace_slug]"] = workspaceSlug;
+    } else {
+      checkoutValues["subscription_data[metadata][product]"] = "scena";
+      checkoutValues["subscription_data[metadata][scena_user_id]"] = user.id;
+      checkoutValues["subscription_data[metadata][offering_code]"] = offeringCode;
+      checkoutValues["subscription_data[metadata][workspace_type]"] = offering.workspace_type;
+      checkoutValues["subscription_data[metadata][workspace_name]"] = workspaceName;
+      checkoutValues["subscription_data[metadata][workspace_slug]"] = workspaceSlug;
+    }
+
+    const session = await stripePost(
+      stripeKey,
+      "/v1/checkout/sessions",
+      checkoutValues,
+      `scena-checkout-${checkoutAttemptId}`,
+    );
 
     stage = "database_persistence";
-    const expiresAt = typeof session.expires_at === "number" ? new Date(session.expires_at * 1000).toISOString() : null;
+    const expiresAt = typeof session.expires_at === "number"
+      ? new Date(session.expires_at * 1000).toISOString()
+      : null;
+
     const { error: checkoutInsertError } = await admin.from("checkout_sessions").insert({
-      stripe_checkout_session_id: session.id,
+      stripe_checkout_session_id: String(session.id),
       user_id: user.id,
-      plan_code: planCode,
-      requested_team_name: teamName,
-      requested_team_slug: teamSlug,
+      plan_code: offeringCode,
+      workspace_type: offering.workspace_type,
+      billing_mode: offering.billing_mode,
+      requested_workspace_name: workspaceName,
+      requested_workspace_slug: workspaceSlug,
+      requested_team_name: offering.workspace_type === "team" ? workspaceName : null,
+      requested_team_slug: offering.workspace_type === "team" ? workspaceSlug : null,
       stripe_customer_id: stripeCustomerId,
       status: "open",
       expires_at: expiresAt,
     });
     if (checkoutInsertError) throw checkoutInsertError;
 
-    return json({ checkout_url: session.url, checkout_session_id: session.id, request_id: requestId }, 200);
+    return json({
+      checkout_url: session.url,
+      checkout_session_id: session.id,
+      offering_code: offeringCode,
+      workspace_type: offering.workspace_type,
+      billing_mode: offering.billing_mode,
+      workspace_slug: workspaceSlug,
+      request_id: requestId,
+    }, 200);
   } catch (error) {
     const errorCode = stage === "configuration" ? "MISSING_CONFIGURATION" : "CHECKOUT_FAILED";
-    // Structured, secret-free failure log — never the error's own message when
-    // stage is "configuration" (that message names the missing env var).
     console.error(JSON.stringify({
       event: "billing_checkout_failed",
       request_id: requestId,
       stage,
       error_code: errorCode,
+      error_name: error instanceof Error ? error.name : "unknown",
     }));
     const status = stage === "configuration" ? 503 : 500;
     const message = stage === "configuration"
@@ -142,15 +274,49 @@ function required(name: string): string {
   if (!value) throw new Error(`missing ${name}`);
   return value;
 }
-function text(value: unknown): string { return typeof value === "string" ? value.trim() : ""; }
-async function stripePost(secret: string, path: string, values: Record<string,string>) {
+
+function text(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function validSlug(value: string): boolean {
+  return /^[a-z0-9][a-z0-9-]{1,62}[a-z0-9]$/.test(value);
+}
+
+function generatedSlug(name: string): string {
+  const normalized = name
+    .normalize("NFKD")
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, "")
+    .trim()
+    .replace(/[\s-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  const stem = (normalized || "workspace").slice(0, 48).replace(/-+$/g, "") || "workspace";
+  return `${stem}-${crypto.randomUUID().replaceAll("-", "").slice(0, 8)}`;
+}
+
+async function stripePost(
+  secret: string,
+  path: string,
+  values: Record<string, string>,
+  idempotencyKey?: string,
+): Promise<any> {
+  const headers: Record<string, string> = {
+    authorization: `Bearer ${secret}`,
+    "content-type": "application/x-www-form-urlencoded",
+  };
+  if (idempotencyKey) headers["idempotency-key"] = idempotencyKey;
+
   const response = await fetch(`https://api.stripe.com${path}`, {
     method: "POST",
-    headers: { authorization: `Bearer ${secret}`, "content-type": "application/x-www-form-urlencoded" },
+    headers,
     body: new URLSearchParams(values),
   });
   const payload = await response.json();
   if (!response.ok) throw new Error(payload?.error?.message ?? "Stripe request failed");
   return payload;
 }
-function json(body: unknown, status: number) { return new Response(JSON.stringify(body), { status, headers: cors }); }
+
+function json(body: unknown, status: number): Response {
+  return new Response(JSON.stringify(body), { status, headers: cors });
+}
