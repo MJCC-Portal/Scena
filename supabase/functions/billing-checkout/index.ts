@@ -67,7 +67,7 @@ Deno.serve(async (req: Request) => {
     const workspaceName = text(body.workspace_name || body.team_name);
     const suppliedSlug = text(body.workspace_slug || body.team_slug).toLowerCase();
 
-    if (!['personal_additional', 'plus', 'pro', 'max'].includes(offeringCode)) {
+    if (!["personal_additional", "plus", "pro", "max"].includes(offeringCode)) {
       return json({ error: { code: "VALIDATION_FAILED", message: "Choose an additional Personal Workspace, Plus, Pro, or Max.", request_id: requestId } }, 400);
     }
     if (!workspaceName || workspaceName.length > 120) {
@@ -78,11 +78,13 @@ Deno.serve(async (req: Request) => {
     }
 
     stage = "offering_lookup";
-    const { data: offering, error: offeringError } = await admin
+    const offeringResult = await admin
       .from("plans")
       .select("plan_code,stripe_price_id,workspace_type,billing_mode,is_active")
       .eq("plan_code", offeringCode)
-      .single<Offering>();
+      .single();
+    const offering = offeringResult.data as Offering | null;
+    const offeringError = offeringResult.error;
 
     if (offeringError || !offering?.is_active || offering.billing_mode === "free") {
       return json({ error: { code: "OFFERING_UNAVAILABLE", message: "That Workspace offering is unavailable.", request_id: requestId } }, 400);
