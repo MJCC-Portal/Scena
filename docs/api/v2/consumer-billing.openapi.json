@@ -1,0 +1,220 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Scena Consumer Billing API",
+    "version": "1.0.12",
+    "description": "Live consumer signup and Workspace-purchase contract. Every authenticated user receives one free Personal Workspace through the Supabase Auth database trigger. Paid Workspaces are provisioned only by the signature-verified Stripe webhook."
+  },
+  "x-verification": {
+    "status": "live-backend-verified",
+    "verified_on": "2026-07-22",
+    "supabase_project": "zglbgqeccebqnijcqfkb",
+    "billing_checkout_version": 8,
+    "billing_webhook_version": 7,
+    "acceptance": "Transactional database acceptance tests passed for one-time Personal Workspace purchase and recurring Plus Team Workspace subscription, including webhook replay idempotency. Hosted Checkout still requires a customer-session test before production promotion."
+  },
+  "servers": [
+    {
+      "url": "https://zglbgqeccebqnijcqfkb.supabase.co/functions/v1",
+      "description": "Scena Supabase Edge Functions"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "Supabase JWT"
+      },
+      "StripeSignature": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "Stripe-Signature",
+        "description": "Stripe-generated webhook signature. This endpoint is not a browser API."
+      }
+    },
+    "schemas": {
+      "WorkspaceType": {
+        "type": "string",
+        "enum": ["personal", "team"]
+      },
+      "BillingMode": {
+        "type": "string",
+        "enum": ["free", "one_time", "subscription"]
+      },
+      "OfferingCode": {
+        "type": "string",
+        "enum": ["personal_free", "personal_additional", "plus", "pro", "max"]
+      },
+      "CheckoutOfferingCode": {
+        "type": "string",
+        "enum": ["personal_additional", "plus", "pro", "max"]
+      },
+      "CheckoutRequest": {
+        "type": "object",
+        "properties": {
+          "offering_code": { "$ref": "#/components/schemas/CheckoutOfferingCode" },
+          "workspace_name": { "type": "string", "minLength": 1, "maxLength": 120 },
+          "workspace_slug": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{1,62}[a-z0-9]$",
+            "description": "Optional. When omitted, the server generates a collision-resistant slug."
+          }
+        },
+        "required": ["offering_code", "workspace_name"],
+        "additionalProperties": false
+      },
+      "CheckoutResponse": {
+        "type": "object",
+        "properties": {
+          "checkout_url": { "type": "string", "format": "uri" },
+          "checkout_session_id": { "type": "string" },
+          "offering_code": { "$ref": "#/components/schemas/CheckoutOfferingCode" },
+          "workspace_type": { "$ref": "#/components/schemas/WorkspaceType" },
+          "billing_mode": { "type": "string", "enum": ["one_time", "subscription"] },
+          "workspace_slug": { "type": "string" },
+          "request_id": { "type": "string", "format": "uuid" }
+        },
+        "required": [
+          "checkout_url",
+          "checkout_session_id",
+          "offering_code",
+          "workspace_type",
+          "billing_mode",
+          "workspace_slug",
+          "request_id"
+        ]
+      },
+      "ErrorEnvelope": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": { "type": "string" },
+              "message": { "type": "string" },
+              "request_id": { "type": "string" }
+            },
+            "required": ["code", "message"]
+          }
+        },
+        "required": ["error"]
+      },
+      "WebhookResponse": {
+        "type": "object",
+        "properties": {
+          "received": { "type": "boolean" },
+          "handled": { "type": "boolean" },
+          "duplicate": { "type": "boolean" }
+        },
+        "required": ["received"]
+      },
+      "Workspace": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "name": { "type": "string" },
+          "slug": { "type": "string" },
+          "type": { "$ref": "#/components/schemas/WorkspaceType" },
+          "owner_user_id": { "type": "string", "format": "uuid" },
+          "provisioning_kind": {
+            "type": "string",
+            "enum": ["initial_free", "personal_purchase", "team_subscription"]
+          },
+          "status": { "type": "string", "enum": ["active", "suspended"] }
+        },
+        "required": ["id", "name", "slug", "type", "owner_user_id", "provisioning_kind", "status"]
+      }
+    }
+  },
+  "paths": {
+    "/billing-checkout": {
+      "post": {
+        "operationId": "startWorkspaceCheckout",
+        "summary": "Create a Stripe Checkout Session for a paid Workspace",
+        "description": "Creates payment-mode Checkout for an additional Personal Workspace or subscription-mode Checkout for a Plus, Pro, or Max Team Workspace. No Workspace is created by this response. Provisioning occurs only after the verified Stripe webhook.",
+        "security": [{ "BearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CheckoutRequest" },
+              "examples": {
+                "additionalPersonal": {
+                  "value": {
+                    "offering_code": "personal_additional",
+                    "workspace_name": "My Second Workspace",
+                    "workspace_slug": "my-second-workspace"
+                  }
+                },
+                "teamPlus": {
+                  "value": {
+                    "offering_code": "plus",
+                    "workspace_name": "North Campus",
+                    "workspace_slug": "north-campus"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Stripe-hosted Checkout Session created.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CheckoutResponse" }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid or unavailable offering/request.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } }
+          },
+          "401": {
+            "description": "A valid Supabase user session is required.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } }
+          },
+          "409": {
+            "description": "Open Checkout conflict or Workspace slug conflict.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } }
+          },
+          "503": {
+            "description": "Required Checkout configuration or price is unavailable.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } }
+          }
+        }
+      }
+    },
+    "/billing-webhook": {
+      "post": {
+        "operationId": "processStripeBillingEvent",
+        "summary": "Process Stripe billing events and provision paid Workspaces",
+        "description": "Stripe-only endpoint. Signature verification and event idempotency are mandatory. Payment-mode Checkout provisions one additional Personal Workspace. Subscription-mode Checkout provisions a Team Workspace and Owner membership. Browser success redirects are never proof of payment.",
+        "security": [{ "StripeSignature": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "type": "object", "additionalProperties": true }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Event accepted, handled, ignored, or recognized as an already-processed duplicate.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WebhookResponse" } } }
+          },
+          "400": {
+            "description": "Stripe signature is invalid.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } }
+          },
+          "500": {
+            "description": "Event processing failed and is recorded as failed for safe replay.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } } }
+          }
+        }
+      }
+    }
+  }
+}

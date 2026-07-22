@@ -8,6 +8,15 @@ type BillingOwner = {
   status: string | null;
 };
 
+type CheckoutRow = {
+  user_id: string;
+  plan_code: string;
+  workspace_type: "personal" | "team";
+  billing_mode: "one_time" | "subscription";
+  stripe_customer_id: string;
+  status: string;
+};
+
 Deno.serve(async (req: Request) => {
   if (req.method !== "POST") return respond({ error: "method_not_allowed" }, 405);
 
@@ -45,7 +54,7 @@ Deno.serve(async (req: Request) => {
     } else {
       await admin
         .from("billing_events")
-        .update({ processing_status: "processing", error_message: null })
+        .update({ processing_status: "processing", error_message: null, processed_at: null })
         .eq("stripe_event_id", String(event.id));
     }
 
@@ -56,6 +65,7 @@ Deno.serve(async (req: Request) => {
         .update({
           processing_status: handled ? "processed" : "ignored",
           processed_at: new Date().toISOString(),
+          error_message: null,
         })
         .eq("stripe_event_id", String(event.id));
       return respond({ received: true, handled }, 200);
@@ -68,7 +78,10 @@ Deno.serve(async (req: Request) => {
       throw error;
     }
   } catch (error) {
-    console.error("billing-webhook failed", error);
+    console.error(JSON.stringify({
+      event: "billing_webhook_failed",
+      error_name: error instanceof Error ? error.name : "unknown",
+    }));
     return respond({ error: "webhook_processing_failed" }, 500);
   }
 });
@@ -76,61 +89,16 @@ Deno.serve(async (req: Request) => {
 async function processEvent(admin: any, event: any): Promise<boolean> {
   const object = event.data?.object ?? {};
 
-  if (event.type === "checkout.session.completed") {
-    if (object.mode !== "subscription" || !object.subscription || !object.customer) {
-      throw new Error("Completed Checkout is missing subscription data");
-    }
+  if (event.type === "checkout.session.completed" || event.type === "checkout.session.async_payment_succeeded") {
+    return await finalizeCheckout(admin, event, object);
+  }
 
-    const metadata = object.metadata ?? {};
-    const userId = String(metadata.scena_user_id ?? object.client_reference_id ?? "");
-    const planCode = String(metadata.plan_code ?? "");
-    const teamName = String(metadata.team_name ?? "");
-    const teamSlug = String(metadata.team_slug ?? "");
-    if (!userId || !planCode || !teamName || !teamSlug) {
-      throw new Error("Checkout metadata is incomplete");
-    }
-
-    const subscription = await stripeGet(`/v1/subscriptions/${encodeURIComponent(String(object.subscription))}`);
-    const priceId = subscriptionPriceId(subscription);
-    if (!priceId) throw new Error("Subscription has no price");
-
-    const { data: plan } = await admin
-      .from("plans")
-      .select("plan_code")
-      .eq("stripe_price_id", priceId)
-      .eq("is_active", true)
-      .maybeSingle();
-    if (!plan || plan.plan_code !== planCode) {
-      throw new Error("Checkout plan does not match Stripe price");
-    }
-
-    const { data: orgId, error: finalizeError } = await admin.rpc("finalize_paid_team_subscription", {
-      target_user_id: userId,
-      target_plan_code: planCode,
-      target_team_name: teamName,
-      target_team_slug: teamSlug,
-      target_stripe_customer_id: String(object.customer),
-      target_stripe_subscription_id: String(subscription.id),
-      target_stripe_price_id: priceId,
-      target_status: normalizeStatus(subscription.status),
-      target_period_start: subscriptionPeriodStart(subscription),
-      target_period_end: subscriptionPeriodEnd(subscription),
-      target_cancel_at_period_end: Boolean(subscription.cancel_at_period_end),
-    });
-    if (finalizeError) throw finalizeError;
-
+  if (event.type === "checkout.session.async_payment_failed") {
     await admin
       .from("checkout_sessions")
-      .update({
-        stripe_subscription_id: String(subscription.id),
-        status: "complete",
-        completed_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      })
-      .eq("stripe_checkout_session_id", String(object.id))
-      .eq("user_id", userId);
-
-    return Boolean(orgId);
+      .update({ status: "failed", updated_at: new Date().toISOString() })
+      .eq("stripe_checkout_session_id", String(object.id));
+    return true;
   }
 
   if (event.type === "checkout.session.expired") {
@@ -152,7 +120,7 @@ async function processEvent(admin: any, event: any): Promise<boolean> {
       .maybeSingle();
 
     const synced = await syncSubscription(admin, object);
-    const owner = await resolveBillingOwner(admin, subscriptionId, String(object.customer ?? ""));
+    const owner = await resolveBillingOwner(admin, subscriptionId, objectId(object.customer));
     if (owner) {
       const previousActive = isActiveStatus(previous?.status);
       const nextActive = isActiveStatus(synced.status);
@@ -255,16 +223,141 @@ async function processEvent(admin: any, event: any): Promise<boolean> {
   return false;
 }
 
+async function finalizeCheckout(admin: any, event: any, checkoutObject: any): Promise<boolean> {
+  const sessionId = String(checkoutObject.id ?? "");
+  if (!sessionId) throw new Error("Checkout event has no Session ID");
+
+  const checkoutResult = await admin
+    .from("checkout_sessions")
+    .select("user_id,plan_code,workspace_type,billing_mode,stripe_customer_id,status")
+    .eq("stripe_checkout_session_id", sessionId)
+    .maybeSingle();
+  const checkout = checkoutResult.data as CheckoutRow | null;
+  const checkoutError = checkoutResult.error;
+  if (checkoutError || !checkout) throw new Error("Checkout Session is not registered in Scena");
+
+  const metadataUserId = String(checkoutObject.metadata?.scena_user_id ?? checkoutObject.client_reference_id ?? "");
+  if (metadataUserId && metadataUserId !== String(checkout.user_id)) {
+    throw new Error("Checkout user metadata does not match the registered Checkout Session");
+  }
+
+  const customerId = objectId(checkoutObject.customer);
+  if (!customerId || customerId !== String(checkout.stripe_customer_id)) {
+    throw new Error("Checkout customer does not match the registered Checkout Session");
+  }
+
+  if (checkout.billing_mode === "one_time") {
+    if (checkout.plan_code !== "personal_additional" || checkout.workspace_type !== "personal") {
+      throw new Error("One-time Checkout has an invalid Workspace offering");
+    }
+    if (String(checkoutObject.mode ?? "") !== "payment") {
+      throw new Error("Personal Workspace Checkout must use payment mode");
+    }
+
+    if (String(checkoutObject.payment_status ?? "") !== "paid") {
+      if (event.type === "checkout.session.completed") return true;
+      throw new Error("Personal Workspace payment is not paid");
+    }
+
+    const paymentIntentId = objectId(checkoutObject.payment_intent);
+    if (!paymentIntentId) throw new Error("Paid Checkout is missing a PaymentIntent");
+
+    const priceId = await checkoutPriceId(sessionId);
+    if (!priceId) throw new Error("Checkout Session has no price");
+
+    const amountTotal = Number(checkoutObject.amount_total);
+    const currency = String(checkoutObject.currency ?? "").toLowerCase();
+    if (!Number.isInteger(amountTotal) || amountTotal < 0 || !currency) {
+      throw new Error("Paid Checkout is missing amount or currency");
+    }
+
+    const { data: workspaceId, error } = await admin.rpc("finalize_personal_workspace_purchase", {
+      target_user_id: String(checkout.user_id),
+      target_stripe_checkout_session_id: sessionId,
+      target_stripe_customer_id: customerId,
+      target_stripe_payment_intent_id: paymentIntentId,
+      target_stripe_price_id: priceId,
+      target_amount_total: amountTotal,
+      target_currency: currency,
+    });
+    if (error) throw error;
+
+    await queueNotification(admin, event, {
+      user_id: String(checkout.user_id),
+      org_id: workspaceId ? String(workspaceId) : null,
+      plan_code: "personal_additional",
+      status: "complete",
+    }, "personal_workspace_purchased", {
+      workspace_id: workspaceId,
+      amount_paid: amountTotal,
+      currency,
+      payment_intent_id: paymentIntentId,
+      checkout_session_id: sessionId,
+    });
+
+    return Boolean(workspaceId);
+  }
+
+  if (checkout.billing_mode === "subscription") {
+    if (!["plus", "pro", "max"].includes(String(checkout.plan_code)) || checkout.workspace_type !== "team") {
+      throw new Error("Subscription Checkout has an invalid Team Workspace offering");
+    }
+    if (String(checkoutObject.mode ?? "") !== "subscription") {
+      throw new Error("Team Workspace Checkout must use subscription mode");
+    }
+
+    const subscriptionId = objectId(checkoutObject.subscription);
+    if (!subscriptionId) throw new Error("Completed Checkout is missing a subscription");
+
+    const subscription = await stripeGet(`/v1/subscriptions/${encodeURIComponent(subscriptionId)}`);
+    const priceId = subscriptionPriceId(subscription);
+    if (!priceId) throw new Error("Subscription has no price");
+
+    const { data: plan } = await admin
+      .from("plans")
+      .select("plan_code,workspace_type,billing_mode")
+      .eq("stripe_price_id", priceId)
+      .eq("is_active", true)
+      .maybeSingle();
+    if (!plan || plan.plan_code !== checkout.plan_code || plan.workspace_type !== "team" || plan.billing_mode !== "subscription") {
+      throw new Error("Checkout plan does not match the Stripe subscription price");
+    }
+
+    const { data: workspaceId, error } = await admin.rpc("finalize_team_workspace_subscription", {
+      target_user_id: String(checkout.user_id),
+      target_stripe_checkout_session_id: sessionId,
+      target_stripe_customer_id: customerId,
+      target_stripe_subscription_id: String(subscription.id),
+      target_stripe_price_id: priceId,
+      target_status: normalizeStatus(subscription.status),
+      target_period_start: subscriptionPeriodStart(subscription),
+      target_period_end: subscriptionPeriodEnd(subscription),
+      target_cancel_at_period_end: Boolean(subscription.cancel_at_period_end),
+    });
+    if (error) throw error;
+    return Boolean(workspaceId);
+  }
+
+  throw new Error("Checkout billing mode is unsupported");
+}
+
+async function checkoutPriceId(sessionId: string): Promise<string> {
+  const lineItems = await stripeGet(`/v1/checkout/sessions/${encodeURIComponent(sessionId)}/line_items?limit=1`);
+  return String(lineItems?.data?.[0]?.price?.id ?? "");
+}
+
 async function syncSubscription(admin: any, subscription: any): Promise<{ planCode: string; status: string }> {
   const priceId = subscriptionPriceId(subscription);
   if (!priceId) throw new Error("Subscription has no price");
 
   const { data: plan } = await admin
     .from("plans")
-    .select("plan_code")
+    .select("plan_code,workspace_type,billing_mode")
     .eq("stripe_price_id", priceId)
     .maybeSingle();
-  if (!plan?.plan_code) throw new Error("Subscription price is not mapped to a Scena plan");
+  if (!plan?.plan_code || plan.workspace_type !== "team" || plan.billing_mode !== "subscription") {
+    throw new Error("Subscription price is not mapped to a Team Workspace plan");
+  }
 
   const status = normalizeStatus(subscription.status);
   const { error } = await admin.rpc("sync_paid_team_subscription", {
@@ -309,11 +402,13 @@ async function resolveBillingOwner(
       .eq("stripe_customer_id", customerId)
       .maybeSingle();
     if (customer?.user_id) {
-      const { data: subscription } = await admin
+      const { data: subscriptions } = await admin
         .from("workspace_subscriptions")
         .select("org_id, plan_code, status")
         .eq("stripe_customer_id", customerId)
-        .maybeSingle();
+        .order("created_at", { ascending: false })
+        .limit(1);
+      const subscription = subscriptions?.[0];
       return {
         user_id: String(customer.user_id),
         org_id: subscription?.org_id ? String(subscription.org_id) : null,
@@ -356,6 +451,12 @@ async function stripeGet(path: string): Promise<any> {
   return payload;
 }
 
+function objectId(value: any): string | null {
+  if (typeof value === "string" && value) return value;
+  if (value?.id) return String(value.id);
+  return null;
+}
+
 function subscriptionPriceId(subscription: any): string {
   return String(subscription?.items?.data?.[0]?.price?.id ?? "");
 }
@@ -369,19 +470,12 @@ function subscriptionPeriodEnd(subscription: any): string | null {
 }
 
 function invoiceSubscriptionId(invoice: any): string | null {
-  const candidate =
-    invoice?.subscription ??
-    invoice?.parent?.subscription_details?.subscription ??
-    invoice?.subscription_details?.subscription;
-  if (typeof candidate === "string") return candidate;
-  if (candidate?.id) return String(candidate.id);
-  return null;
+  const candidate = invoice?.subscription ?? invoice?.parent?.subscription_details?.subscription ?? invoice?.subscription_details?.subscription;
+  return objectId(candidate);
 }
 
 function invoiceCustomerId(invoice: any): string | null {
-  if (typeof invoice?.customer === "string") return invoice.customer;
-  if (invoice?.customer?.id) return String(invoice.customer.id);
-  return null;
+  return objectId(invoice?.customer);
 }
 
 async function verifyStripeSignature(payload: string, header: string, secret: string): Promise<boolean> {
@@ -405,9 +499,7 @@ async function verifyStripeSignature(payload: string, header: string, secret: st
     key,
     new TextEncoder().encode(`${timestamp}.${payload}`),
   );
-  const expected = [...new Uint8Array(digest)]
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
+  const expected = [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
   return signatures.some((signature) => timingSafeEqual(signature, expected));
 }
 
@@ -431,9 +523,7 @@ function isActiveStatus(value: unknown): boolean {
 
 function unixDate(value: unknown): string | null {
   const seconds = Number(value);
-  return Number.isFinite(seconds) && seconds > 0
-    ? new Date(seconds * 1000).toISOString()
-    : null;
+  return Number.isFinite(seconds) && seconds > 0 ? new Date(seconds * 1000).toISOString() : null;
 }
 
 function numericOrNull(value: unknown): number | null {
@@ -447,7 +537,7 @@ function required(name: string): string {
   return value;
 }
 
-function respond(body: unknown, status: number) {
+function respond(body: unknown, status: number): Response {
   return new Response(JSON.stringify(body), {
     status,
     headers: {
