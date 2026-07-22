@@ -1,0 +1,97 @@
+{
+  "generated": "2026-07-22",
+  "note": "Implementation status of planned API v2 capabilities versus current live edge function support.",
+  "features": [
+    {
+      "feature": "Manager v2 router",
+      "planned": true,
+      "live": false,
+      "liveSurface": [],
+      "notes": "The v2 client foundation exists in src/api/v2, but no scena-api router is deployed yet."
+    },
+    {
+      "feature": "Current Team context",
+      "planned": true,
+      "live": false,
+      "liveSurface": [],
+      "notes": "Access to current active Team is planned for the v2 router via manager JWT."
+    },
+    {
+      "feature": "Display registration and pairing",
+      "planned": true,
+      "live": true,
+      "liveSurface": ["screen-register", "screen-claim"],
+      "notes": "Live kiosk onboarding exists through separate edge functions with device-token and pairing-code flows."
+    },
+    {
+      "feature": "Kiosk state polling",
+      "planned": true,
+      "live": true,
+      "liveSurface": ["display-gateway"],
+      "notes": "Kiosk polling is implemented as a standalone gateway endpoint that resolves display state on every poll."
+    },
+    {
+      "feature": "Credential rotation",
+      "planned": true,
+      "live": true,
+      "liveSurface": ["screen-credential-rotate"],
+      "notes": "Managers can rotate display credentials in live edge function code."
+    },
+    {
+      "feature": "Presentation ingestion",
+      "planned": true,
+      "live": true,
+      "liveSurface": ["presentation-upload", "presentation-callback"],
+      "notes": "Presentation upload and processing callbacks are live, with direct LXC integration."
+    },
+    {
+      "feature": "Scheduled automations",
+      "planned": true,
+      "live": true,
+      "liveSurface": ["automations-run"],
+      "notes": "Workflow automation execution is live via a trusted worker endpoint."
+    },
+    {
+      "feature": "Stripe Checkout",
+      "planned": true,
+      "live": true,
+      "liveSurface": ["billing-checkout"],
+      "notes": "Stripe Checkout session creation is implemented in a live edge function."
+    },
+    {
+      "feature": "Stripe Billing Portal",
+      "planned": true,
+      "live": true,
+      "liveSurface": ["billing-portal"],
+      "notes": "Billing portal session creation is implemented in a live edge function."
+    },
+    {
+      "feature": "Stripe webhook synchronization",
+      "planned": true,
+      "live": true,
+      "liveSurface": ["billing-webhook"],
+      "notes": "Stripe events are ingested, deduplicated, and used to sync subscription state."
+    },
+    {
+      "feature": "Shared API error contract",
+      "planned": true,
+      "live": true,
+      "liveSurface": ["all edge functions"],
+      "notes": "Both live functions and planned v2 use the same stable error code catalog."
+    },
+    {
+      "feature": "Idempotency headers",
+      "planned": true,
+      "live": false,
+      "liveSurface": ["client only"],
+      "notes": "Idempotency client headers are supported in src/api/v2, but no server-side store exists for live v2 endpoints yet."
+    },
+    {
+      "feature": "Organization invalidation broadcast",
+      "planned": false,
+      "live": true,
+      "liveSurface": ["display-gateway", "domain mutations"],
+      "notes": "Realtime broadcast invalidation is a live implementation detail used by kiosk polling."
+    }
+  ]
+}

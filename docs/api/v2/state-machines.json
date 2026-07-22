@@ -1,0 +1,54 @@
+{
+  "generated": "2026-07-22",
+  "note": "Runtime state-machine definitions derived from live edge function implementation and domain code.",
+  "machines": [
+    {
+      "name": "Screen Pairing",
+      "states": ["pairing", "ready", "revoked"],
+      "transitions": [
+        { "from": "pairing", "to": "ready", "trigger": "screen-claim success", "notes": "Manager claims a pairing code and assigns an org/location." },
+        { "from": "pairing", "to": "revoked", "trigger": "screen-credential-rotate for revoked screen or manual revocation", "notes": "Revoked credentials stop kiosk access." }
+      ],
+      "errorStates": ["pairing code expired", "pairing code consumed", "pairing code locked"]
+    },
+    {
+      "name": "Display State Resolution",
+      "states": ["pending", "showing", "no_assignment", "revoked"],
+      "transitions": [
+        { "from": "pending", "to": "showing", "trigger": "screen-claim completes", "notes": "Kiosk exits pairing and begins polling live state." },
+        { "from": "showing", "to": "no_assignment", "trigger": "session stops or screen is unassigned", "notes": "No active session is assigned to the screen." },
+        { "from": "showing", "to": "revoked", "trigger": "display-gateway sees revoked screen", "notes": "Revoked screens are blocked from playback." }
+      ]
+    },
+    {
+      "name": "Presentation Asset Lifecycle",
+      "states": ["pending_upload", "uploaded", "ready", "failed"],
+      "transitions": [
+        { "from": "pending_upload", "to": "uploaded", "trigger": "presentation-upload complete", "notes": "Upload is confirmed with the LXC service." },
+        { "from": "uploaded", "to": "ready", "trigger": "presentation-callback outcome == complete", "notes": "LXC processing finished and manifest key available." },
+        { "from": "uploaded", "to": "failed", "trigger": "presentation-callback outcome == fail", "notes": "Processing failed and asset is marked failed." }
+      ]
+    },
+    {
+      "name": "Automation Scheduling",
+      "states": ["enabled", "disabled"],
+      "transitions": [
+        { "from": "enabled", "to": "enabled", "trigger": "automations-run executes due automation", "notes": "Cron automations reschedule for next occurrence; once automations may disable after success." },
+        { "from": "enabled", "to": "disabled", "trigger": "automation schedule_type == once and execution succeeds", "notes": "One-shot automations are disabled after successful execution." }
+      ],
+      "errorHandling": [
+        { "condition": "execution fails", "action": "retry later", "notes": "Once automations back off 5 minutes; cron automations attempt next occurrence." }
+      ]
+    },
+    {
+      "name": "Billing Checkout and Subscription",
+      "states": ["open", "expired", "complete", "active", "inactive"],
+      "transitions": [
+        { "from": "open", "to": "expired", "trigger": "checkout.session.expired", "notes": "Open checkout sessions expire when Stripe reports expiration." },
+        { "from": "open", "to": "complete", "trigger": "checkout.session.completed", "notes": "Stripe Checkout completion finalizes the paid Team subscription." },
+        { "from": "complete", "to": "active", "trigger": "subscription becomes active", "notes": "Subscription synchronization updates local workspace subscription state." },
+        { "from": "complete", "to": "inactive", "trigger": "subscription becomes incomplete or canceled", "notes": "Stripe webhook updates local status on subscription lifecycle events." }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,109 @@
+{
+  "generated": "2026-07-22",
+  "note": "Planned v2 paths are the target manager API. Live edge functions are the currently deployed surface and remain separate until the scena-api router is implemented.",
+  "paths": {
+    "/v2/teams/current": { "status": "planned", "description": "Active Team context for the authenticated manager." },
+    "/v2/boards": { "status": "planned", "description": "List or create Boards (layout/content containers)." },
+    "/v2/displays": { "status": "planned", "description": "List Displays owned by the authenticated Team." },
+    "/v2/displays/{display_id}/credential-rotate": { "status": "planned", "description": "Rotate a Display's device credential." },
+    "/v2/sessions": { "status": "planned", "description": "List or create Sessions." },
+    "/v2/sessions/{session_id}/start": { "status": "planned", "description": "Start a Session." },
+    "/v2/sessions/{session_id}/stop": { "status": "planned", "description": "Stop a Session." },
+    "/v2/menus": { "status": "planned", "description": "List or create Menus." },
+    "/v2/scenes": { "status": "planned", "description": "List or create Scenes tied to Menus or Presentations." },
+    "/v2/layouts": { "status": "planned", "description": "List or create Layouts." },
+    "/v2/presentations": { "status": "planned", "description": "List Presentation assets and metadata." },
+    "/v2/automations": { "status": "planned", "description": "List or create Automations." }
+  },
+  "liveEdgeFunctions": [
+    {
+      "name": "screen-register",
+      "path": "/functions/v1/screen-register",
+      "auth": "none",
+      "purpose": "Kiosk registration, device credential issuance, and short-lived pairing code creation.",
+      "status": "live"
+    },
+    {
+      "name": "display-gateway",
+      "path": "/functions/v1/display-gateway",
+      "auth": "device token",
+      "purpose": "Kiosk polling endpoint for resolved display state and live scene/layout content.",
+      "status": "live"
+    },
+    {
+      "name": "screen-claim",
+      "path": "/functions/v1/screen-claim",
+      "auth": "manager JWT",
+      "purpose": "Manager pairing flow that consumes a pairing code and assigns a kiosk to an organization and location.",
+      "status": "live"
+    },
+    {
+      "name": "screen-credential-rotate",
+      "path": "/functions/v1/screen-credential-rotate",
+      "auth": "manager JWT",
+      "purpose": "Rotate a claimed screen's credential and return the new device token once.",
+      "status": "live"
+    },
+    {
+      "name": "presentation-upload",
+      "path": "/functions/v1/presentation-upload",
+      "auth": "manager JWT",
+      "purpose": "Create presentation ingestion jobs and confirm upload with the LXC service.",
+      "status": "live"
+    },
+    {
+      "name": "presentation-callback",
+      "path": "/functions/v1/presentation-callback",
+      "auth": "shared secret",
+      "purpose": "LXC callback for presentation processing completion or failure.",
+      "status": "live"
+    },
+    {
+      "name": "automations-run",
+      "path": "/functions/v1/automations-run",
+      "auth": "shared secret",
+      "purpose": "Scheduler/worker endpoint that claims due automations and executes session/display actions.",
+      "status": "live"
+    },
+    {
+      "name": "billing-checkout",
+      "path": "/functions/v1/billing-checkout",
+      "auth": "manager JWT",
+      "purpose": "Create Stripe Checkout sessions and persist checkout state.",
+      "status": "live"
+    },
+    {
+      "name": "billing-portal",
+      "path": "/functions/v1/billing-portal",
+      "auth": "manager JWT",
+      "purpose": "Create Stripe Billing Portal sessions for an existing billing customer.",
+      "status": "live"
+    },
+    {
+      "name": "billing-webhook",
+      "path": "/functions/v1/billing-webhook",
+      "auth": "Stripe webhook signature",
+      "purpose": "Ingest Stripe events, deduplicate them, and synchronize subscription status to the database.",
+      "status": "live"
+    }
+  ],
+  "sharedInfrastructure": {
+    "supabase": {
+      "serviceRole": "Used by edge functions for privileged database operations and manager JWT resolution.",
+      "edgeFunctions": "Live function boundary for kiosk, billing, automation, and presentation workflows.",
+      "realtimeBroadcast": "Org-scoped broadcast channel used for kiosk invalidation when display state changes."
+    },
+    "stripe": {
+      "checkout": "Billing checkout session creation and plan mapping.",
+      "billingPortal": "Customer portal session creation.",
+      "webhooks": "Subscription lifecycle and payment event synchronization."
+    },
+    "lxcPresentationService": {
+      "jobBroker": "presentation-upload creates jobs and returns upload URLs.",
+      "callback": "presentation-callback receives processing completion and ready manifest keys."
+    },
+    "scheduler": {
+      "automationWorker": "automations-run executes scheduled actions and reschedules cron/once automations." 
+    }
+  }
+}

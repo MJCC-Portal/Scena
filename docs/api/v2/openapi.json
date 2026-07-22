@@ -1,0 +1,321 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Scena API v2",
+    "version": "2",
+    "description": "Planned manager-facing API v2 router for Scena. See docs/api/v2/README.md for current live edge function inventory and deployment status."
+  },
+  "servers": [
+    {
+      "url": "https://{project}.functions.supabase.co/functions/v1/scena-api",
+      "description": "Base URL for the planned v2 manager router. Replace {project} with the Supabase project ref.",
+      "variables": {
+        "project": {
+          "default": "<project-ref>",
+          "description": "Supabase project reference."
+        }
+      }
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    },
+    "schemas": {
+      "ErrorEnvelope": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": { "type": "string" },
+              "message": { "type": "string" },
+              "details": { "type": ["object", "null"] },
+              "request_id": { "type": "string" }
+            },
+            "required": ["code", "message", "request_id"]
+          }
+        },
+        "required": ["error"]
+      },
+      "SuccessEnvelope": {
+        "type": "object",
+        "properties": {
+          "data": { "type": ["object", "array", "string", "number", "boolean", "null"] },
+          "meta": {
+            "type": "object",
+            "properties": {
+              "api_version": { "type": "string", "example": "2" },
+              "request_id": { "type": "string" }
+            },
+            "required": ["api_version", "request_id"]
+          }
+        },
+        "required": ["data", "meta"]
+      },
+      "TeamContext": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "name": { "type": "string" },
+          "slug": { "type": "string" },
+          "status": { "type": "string", "enum": ["active", "suspended"] },
+          "role": { "type": "string", "enum": ["owner", "admin", "operator", "designer", "viewer"] }
+        },
+        "required": ["id", "name", "slug", "status", "role"]
+      },
+      "Display": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "name": { "type": "string" },
+          "status": { "type": "string" },
+          "org_id": { "type": "string", "format": "uuid" },
+          "location_id": { "type": "string", "format": "uuid" }
+        },
+        "required": ["id", "name", "status", "org_id", "location_id"]
+      },
+      "Session": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "name": { "type": "string" },
+          "status": { "type": "string" },
+          "display_mode": { "type": "string" },
+          "location_id": { "type": "string", "format": "uuid" }
+        },
+        "required": ["id", "name", "status", "display_mode", "location_id"]
+      },
+      "Layout": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "name": { "type": "string" },
+          "canvas_width": { "type": "integer" },
+          "canvas_height": { "type": "integer" },
+          "background_color": { "type": "string" }
+        },
+        "required": ["id", "name", "canvas_width", "canvas_height", "background_color"]
+      },
+      "Scene": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "name": { "type": "string" },
+          "scene_type": { "type": "string", "enum": ["menu", "powerpoint"] },
+          "location_id": { "type": "string", "format": "uuid" }
+        },
+        "required": ["id", "name", "scene_type", "location_id"]
+      },
+      "Menu": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "name": { "type": "string" },
+          "location_id": { "type": "string", "format": "uuid" }
+        },
+        "required": ["id", "name", "location_id"]
+      },
+      "PresentationAsset": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "status": { "type": "string" },
+          "original_filename": { "type": "string" },
+          "mime_type": { "type": "string" }
+        },
+        "required": ["id", "status", "original_filename", "mime_type"]
+      },
+      "Automation": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "name": { "type": "string" },
+          "schedule_type": { "type": "string", "enum": ["once", "cron"] },
+          "is_enabled": { "type": "boolean" }
+        },
+        "required": ["id", "name", "schedule_type", "is_enabled"]
+      }
+    }
+  },
+  "security": [
+    {
+      "BearerAuth": []
+    }
+  ],
+  "paths": {
+    "/v2/teams/current": {
+      "get": {
+        "summary": "Current Team context",
+        "description": "Returns the active Team (organization) context for the authenticated manager.",
+        "responses": {
+          "200": {
+            "description": "Current Team context.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "No active Team or membership.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            }
+          }
+        }
+      }
+    },
+    "/v2/boards": {
+      "get": {
+        "summary": "List Boards",
+        "description": "Returns Boards available to the authenticated manager.",
+        "responses": {
+          "200": {
+            "description": "List of Boards.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessEnvelope"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create a Board",
+        "description": "Creates a new Board or layout resource.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": { "type": "string" },
+                  "location_id": { "type": "string", "format": "uuid" }
+                },
+                "required": ["name", "location_id"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Board created.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/SuccessEnvelope" } }
+            }
+          }
+        }
+      }
+    },
+    "/v2/displays": {
+      "get": {
+        "summary": "List Displays",
+        "description": "Returns Displays owned by the authenticated manager's Team.",
+        "responses": {
+          "200": {
+            "description": "List of Displays.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SuccessEnvelope" } } }
+          }
+        }
+      }
+    },
+    "/v2/displays/{display_id}/credential-rotate": {
+      "post": {
+        "summary": "Rotate Display credential",
+        "parameters": [
+          {
+            "name": "display_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "responses": {
+          "200": { "description": "New display credential issued.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SuccessEnvelope" } } } }
+        }
+      }
+    },
+    "/v2/sessions": {
+      "get": {
+        "summary": "List Sessions",
+        "responses": { "200": { "description": "List of Sessions.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SuccessEnvelope" } } } } }
+      },
+      "post": {
+        "summary": "Create a draft Session",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "type": "object", "properties": { "name": { "type": "string" }, "location_id": { "type": "string", "format": "uuid" } }, "required": ["name", "location_id"] } } }
+        },
+        "responses": { "200": { "description": "Draft Session created.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SuccessEnvelope" } } } } }
+      }
+    },
+    "/v2/sessions/{session_id}/start": {
+      "post": {
+        "summary": "Start a Session",
+        "parameters": [{ "name": "session_id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
+        "responses": { "200": { "description": "Session started.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SuccessEnvelope" } } } } }
+      }
+    },
+    "/v2/sessions/{session_id}/stop": {
+      "post": {
+        "summary": "Stop a Session",
+        "parameters": [{ "name": "session_id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
+        "responses": { "200": { "description": "Session stopped.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SuccessEnvelope" } } } } }
+      }
+    },
+    "/v2/menus": {
+      "get": { "summary": "List Menus", "responses": { "200": { "description": "Menu list.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SuccessEnvelope" } } } } } },
+    "post": {
+      "summary": "Create a Menu",
+      "requestBody": {
+        "required": true,
+        "content": { "application/json": { "schema": { "type": "object", "properties": { "name": { "type": "string" }, "location_id": { "type": "string", "format": "uuid" } }, "required": ["name", "location_id"] } } }
+      },
+      "responses": { "200": { "description": "Menu created.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SuccessEnvelope" } } } } }
+    }
+    },
+    "/v2/scenes": {
+      "get": { "summary": "List Scenes", "responses": { "200": { "description": "Scene list.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SuccessEnvelope" } } } } } },
+    "post": {
+      "summary": "Create a Scene",
+      "requestBody": {
+        "required": true,
+        "content": { "application/json": { "schema": { "type": "object", "oneOf": [
+          { "type": "object", "properties": { "scene_type": { "const": "menu" }, "name": { "type": "string" }, "location_id": { "type": "string", "format": "uuid" }, "menu_id": { "type": "string", "format": "uuid" } }, "required": ["scene_type", "name", "location_id", "menu_id"] },
+          { "type": "object", "properties": { "scene_type": { "const": "powerpoint" }, "name": { "type": "string" }, "location_id": { "type": "string", "format": "uuid" }, "presentation_asset_id": { "type": "string", "format": "uuid" } }, "required": ["scene_type", "name", "location_id", "presentation_asset_id"] }
+        ] } } }
+      },
+      "responses": { "200": { "description": "Scene created.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SuccessEnvelope" } } } } }
+    }
+    },
+    "/v2/layouts": {
+      "get": { "summary": "List Layouts", "responses": { "200": { "description": "Layout list.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SuccessEnvelope" } } } } } },
+    "post": {
+      "summary": "Create a Layout",
+      "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "name": { "type": "string" }, "location_id": { "type": "string", "format": "uuid" }, "canvas_width": { "type": "integer" }, "canvas_height": { "type": "integer" }, "background_color": { "type": "string" } }, "required": ["name", "location_id"] } } } },
+      "responses": { "200": { "description": "Layout created.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SuccessEnvelope" } } } } }
+    }
+    },
+    "/v2/presentations": {
+      "get": { "summary": "List Presentation Assets", "responses": { "200": { "description": "Presentation asset list.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SuccessEnvelope" } } } } } }
+    },
+    "/v2/automations": {
+      "get": { "summary": "List Automations", "responses": { "200": { "description": "Automation list.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SuccessEnvelope" } } } } } },
+    "post": {
+      "summary": "Create an Automation",
+      "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "name": { "type": "string" }, "location_id": { "type": "string", "format": "uuid" }, "session_id": { "type": "string", "format": "uuid" }, "schedule_type": { "type": "string", "enum": ["once", "cron"] }, "timezone": { "type": "string" } }, "required": ["name", "location_id", "session_id", "schedule_type", "timezone"] } } } },
+      "responses": { "200": { "description": "Automation created.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SuccessEnvelope" } } } } }
+    }
+    }
+  }
+}

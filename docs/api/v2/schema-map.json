@@ -1,0 +1,73 @@
+{
+  "generated": "2026-07-22",
+  "note": "Mapping of live Supabase schema objects to domain concepts used by Scena's current edge functions and planned API.",
+  "domainObjects": [
+    {
+      "concept": "Team / Organization",
+      "tables": ["organizations", "organization_members", "organization_entitlements"],
+      "purpose": "Team metadata, membership, roles, plan entitlements, and limits."
+    },
+    {
+      "concept": "Locations",
+      "tables": ["locations"],
+      "purpose": "Physical deployment sites for Displays, Menus, Scenes, Layouts, and Sessions."
+    },
+    {
+      "concept": "Displays / Screens",
+      "tables": ["screens", "screen_pairing_codes"],
+      "purpose": "Kiosk registration, device credentials, pairing codes, and assignment state."
+    },
+    {
+      "concept": "Menus and Menu Content",
+      "tables": ["menus", "menu_sections", "menu_items"],
+      "purpose": "Menu-driven content scenes rendered to displays."
+    },
+    {
+      "concept": "Presentations",
+      "tables": ["presentation_assets"],
+      "purpose": "Uploaded presentation files, LXC manifest references, and ready/failed processing state."
+    },
+    {
+      "concept": "Scenes",
+      "tables": ["scenes"],
+      "purpose": "Content scenes referencing menus or presentation assets for display playback."
+    },
+    {
+      "concept": "Layouts / Boards",
+      "tables": ["display_layouts", "display_layout_tiles"],
+      "purpose": "Board layout definitions and tile placement for display composition."
+    },
+    {
+      "concept": "Sessions",
+      "tables": ["display_sessions", "display_session_screens"],
+      "purpose": "Active live sessions that assign displays to layouts, modes, and screens."
+    },
+    {
+      "concept": "Automations",
+      "tables": ["display_automations"],
+      "purpose": "Scheduled actions that start/stop sessions, set layouts, and enable/disable screens."
+    },
+    {
+      "concept": "Billing Checkout",
+      "tables": ["plans", "checkout_sessions", "billing_customers", "workspace_subscriptions"],
+      "purpose": "Stripe plan pricing, checkout session lifecycle, and subscription persistence."
+    },
+    {
+      "concept": "Billing Event Tracking",
+      "tables": ["billing_events", "billing_notification_outbox"],
+      "purpose": "Stripe webhook deduplication, processing state, and notification dispatch."
+    }
+  ],
+  "databaseFunctions": [
+    {
+      "name": "finalize_paid_team_subscription",
+      "purpose": "Finalizes a Stripe Checkout session into a paid Team and workspace subscription record.",
+      "usedBy": ["billing-webhook"]
+    },
+    {
+      "name": "sync_paid_team_subscription",
+      "purpose": "Synchronizes Stripe subscription fields into the local subscription record.",
+      "usedBy": ["billing-webhook"]
+    }
+  ]
+}
