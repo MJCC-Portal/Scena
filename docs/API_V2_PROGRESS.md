@@ -302,3 +302,59 @@ None of these checks exercise `src/` or `supabase/functions/` differently than b
 - `package.json` version (`1.0.2`) vs. latest git tag (`v1.0.5`) drift — still unresolved, still out of scope for a docs pass.
 
 **No commit, no push, no tag, no database write, no edge function deploy, no migration** — this round changed documentation and ran read-only verification commands only.
+
+## Session 3 — 2026-07-22 (Release 1 backend discovery + gap-closure)
+
+### Starting state
+
+`v1.0.6` and `v1.0.7` landed on `origin/main` between Session 2 and this session (both real, owner-authored: `v1.0.6` committed this session's Session 2 documentation corrections verbatim; `v1.0.7` added `TIMELINE.md` — the actual Release 1 execution plan — and reformatted `docs/sop/Roadmap.md`). Verified `git fetch` + `git rev-parse HEAD`/`origin/main` match `c6348afc6e564e00c26cbf690ea2b8f0b483c95a` before doing anything else; working tree was clean at start.
+
+### A request asked for a new `supabase/functions/scena-api` manager-API router tonight — declined in favor of `TIMELINE.md`
+
+The request's own git guardrails forbid deploying anything tonight. `TIMELINE.md` (committed minutes earlier, same evening) has Wednesday's UI build integrating against the **existing** domain modules (`src/domain/*.ts`) and the 7 **already-deployed** Edge Functions, and explicitly lists "Undeployed or source-only Edge Functions" under "Explicitly postponed." An undeployed `scena-api`, however complete as source, would not be usable by Wednesday's UI work and would duplicate authorization logic (`requireManager()` + RLS) that already exists and is already exercised by the current frontend. Raised this conflict directly; owner chose "follow `TIMELINE.md`" — close real gaps in the existing backend instead.
+
+### Discovery: the existing backend is much further along than either plan assumed
+
+- `src/domain/*.ts` (organizations, locations, menus, scenes, layouts, screens, sessions, automations, billing) is a mature, consistent, RLS-backed browser-side domain layer — typed, validated (`src/shared/validation.ts`), uniform error mapping (`mapPostgresError`), org-scoped on every query, broadcasting invalidation on every mutation. None of it had any test coverage before this session (zero `*.test.ts` files under `src/domain/`).
+- `src/app/route-metadata.ts` is an existing, actively-maintained, honest ledger of functional vs. placeholder frontend routes — it already correctly flagged real gaps (no organization-update service; no presentations upload UI) rather than pretending completeness.
+- **Pairing protocol, re-traced end to end**: kiosk calls `screen-register` (`src/lib/display.ts` — a real, wired-up caller) → NOT deployed → so `screen-claim` (deployed, manager-side, already wired to a real page at `/app/screens/pair`) has nothing to claim. `deno check` (run this session, isolated-temp-dir technique matching CI's own method) passes clean on all 11 maintained functions including `screen-register` — the code is correct and type-safe, the only blocker is deployment authorization, which this session does not have and did not seek to bypass. **This is the #1 P0 blocker for Thursday's "pair a Display" step** — flagging for explicit owner deployment approval, not attempting to work around it.
+- **Billing webhook, read in full**: `billing-webhook/index.ts` already does real Stripe signature verification (timing-safe), event dedup via `billing_events`, and calls `finalize_paid_team_subscription`/`sync_paid_team_subscription` RPCs for Team provisioning/sync — matches SOP §12 Stage 4 and the release's "verified Stripe webhook provisions the Team" requirement. Existing and deployed; not rewritten.
+- **Real, concrete gap found**: no domain module existed for `presentation_assets` (the SOP's "Asset"). `scenes.ts` only touches it inline when creating a presentation-backed scene; there was no list/detail/delete surface at all — a hard blocker for Wednesday's "Asset library" UI work (`TIMELINE.md` Block C).
+- **Real, concrete gap found**: no dashboard aggregation existed. `HomePage.tsx` is a static welcome message. `TIMELINE.md` Block B requires real Board/Asset/Display counts ("Do not create fake metrics") — nothing computed them.
+
+### What was built this session
+
+- **`src/domain/assets.ts`** (new): `listAssets`, `getAsset`, `deleteAsset` (checks `scenes.presentation_asset_id` references first and returns `RESOURCE_CONFLICT` instead of a raw FK violation — mirrors the "stable errors, never raw database errors" principle already used throughout this codebase), `createAssetUpload`/`confirmAssetUpload` (thin wrappers around the existing, deployed `presentation-upload` function — no second upload implementation). `SAFE_COLUMNS` excludes `lxc_source_key`/`lxc_manifest_key`, mirroring `screens.ts`'s exclusion of `device_token_hash`.
+- **`src/domain/dashboard.ts`** (new): `getDashboardSummary(orgId)` — real, head-only exact-count queries for Boards (`display_layouts`), Assets (`presentation_assets`), Displays (`screens`), and an online-Displays count (`screens` with `status='ready'` and `last_seen_at` within a 5-minute window — a real threshold over a real column `display-gateway` already stamps on every poll, not a fabricated heartbeat), plus the real plan entitlement via the existing `getEntitlement`.
+- **`src/domain/assets.test.ts`** and **`src/domain/dashboard.test.ts`** (new, 12 tests total): first tests ever written for this domain layer. Cover Team-scoping, input validation, the reference-check-before-delete path, both a "found" and "not found" not-fabricated-zero-plan case, and the upload wrapper's edge-function call shape.
+- **`src/app/route-metadata.ts`**: updated the `/app/presentations` note to reflect that `src/domain/assets.ts` now exists (status stays `"placeholder"` — no UI was built tonight, per `TIMELINE.md`'s own Tuesday/Wednesday split).
+- **No UI page was written or changed.** Per `TIMELINE.md`, Tuesday night is backend/truth, Wednesday is UI build — `HomePage.tsx`, the presentations page, etc. are deliberately left for Wednesday to build against tonight's real domain modules.
+
+### Verification (local copy, network-share `spawn EPERM` workaround as in Session 2)
+
+| Check | Result |
+|---|---|
+| `npm ci` | Pass (206 packages) |
+| `npx tsc -b` | Pass, zero errors |
+| `npx vitest run` | Pass, **120/120** (108 previously + 12 new) |
+| `npm run build` | Pass |
+| `deno check` (all 11 maintained functions, isolated-temp-dir, matching CI's own technique) | Pass — including `screen-register` |
+| `node scripts/validate-api-contracts.mjs` | Pass |
+| `git diff --check` | Pass (only a CRLF-on-next-touch warning, not an error) |
+
+### Explicitly not done this session
+
+- `supabase/functions/scena-api` was not built — see the discussion above; this was a deliberate, owner-confirmed redirection, not an oversight.
+- `screen-register` was not deployed, and no other Edge Function was deployed, migrated, or modified.
+- No UI was built (Wednesday's job per `TIMELINE.md`).
+- No CI workflow changes — nothing added tonight needs a new CI job (new `src/domain/*.test.ts` files run under the existing `application` job's `vitest run`; no new Edge Function was added).
+- Team-settings editing (`PATCH` equivalent) — real backend gap, already correctly flagged in `route-metadata.ts`, not required by the release acceptance test, left alone.
+
+### Still open / P0-P1 for the rest of the release
+
+- **P0**: `screen-register` deployment requires explicit owner authorization — without it, "pair a Display" cannot complete in production regardless of source quality.
+- **P0** (per `docs/sop/Purpose.md` §5, unchanged by this session): Stripe Checkout → webhook → Team provisioning has real code on both ends but has not been click-tested end to end with a real Stripe session.
+- **P1**: no UI exists yet for Assets, Dashboard, Board editing, or Display assignment — that's Wednesday's work, now unblocked by tonight's domain modules.
+- **P1**: `package.json` version (`1.0.2`) vs. latest git tag (`v1.0.7`) drift, carried over from Session 2, still unresolved.
+
+**No commit, no push, no tag, no deploy, no migration, no production mutation this session.**

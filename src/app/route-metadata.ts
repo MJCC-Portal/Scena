@@ -33,7 +33,7 @@ export const ROUTE_METADATA: RouteMeta[] = [
   { path: "/app/layouts/new", label: "New layout", status: "functional" },
   { path: "/app/layouts/:layoutId", label: "Layout detail", status: "placeholder" },
   { path: "/app/layouts/:layoutId/edit", label: "Layout editor", status: "placeholder", note: "Tile CRUD exists in src/domain/layouts.ts; no tile editor UI yet." },
-  { path: "/app/presentations", label: "Presentations", status: "placeholder", note: "presentation-upload/presentation-callback Edge Functions exist; no upload UI yet." },
+  { path: "/app/presentations", label: "Presentations", status: "placeholder", note: "presentation-upload Edge Function is deployed; src/domain/assets.ts (list/get/delete/upload-wrapper) now exists; no upload/library UI yet." },
   { path: "/app/presentations/:presentationId", label: "Presentation detail", status: "placeholder" },
   { path: "/app/screens", label: "Screens", status: "functional" },
   { path: "/app/screens/pair", label: "Pair a screen", status: "functional" },
