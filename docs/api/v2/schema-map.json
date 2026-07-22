@@ -1,5 +1,10 @@
 {
   "generated": "2026-07-22",
+  "_verification": {
+    "status": "database_verified",
+    "authoritative": true,
+    "note": "Cross-checked this pass (2026-07-22) against a direct mcp__supabase__list_tables read — every table named here exists live with the columns implied. The 'Layouts / Boards' domain-object naming inherits the unresolved Board/Asset architecture decision documented in docs/api/v2/README.md; that naming ambiguity is the one open item, not a factual error in this file."
+  },
   "note": "Mapping of live Supabase schema objects to domain concepts used by Scena's current edge functions and planned API.",
   "domainObjects": [
     {

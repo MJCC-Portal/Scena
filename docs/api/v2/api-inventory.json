@@ -1,27 +1,39 @@
 {
   "generated": "2026-07-22",
-  "note": "Planned v2 paths are the target manager API. Live edge functions are the currently deployed surface and remain separate until the scena-api router is implemented.",
+  "note": "Planned v2 paths are an unbuilt target manager router (no scena-api Edge Function exists yet — see docs/API_V2.md). Edge function status values are verified against mcp__supabase__list_edge_functions, not inferred from repo source. Per docs/sop/Purpose.md §16: source existing is not the same claim as deployed, and deployed is not the same claim as functionally verified.",
+  "statusLegend": {
+    "planned": "No source exists yet. Design intent only.",
+    "source_created": "Source exists in supabase/functions/, but mcp__supabase__list_edge_functions does not list it as deployed.",
+    "deployed_unused": "Deployed and ACTIVE per mcp__supabase__list_edge_functions, but no current src/ code path calls it.",
+    "live": "Deployed, ACTIVE, and called by a current src/ code path.",
+    "not_in_repository": "No tracked source exists. An untracked local directory or file may exist on disk (git does not track empty directories), but it is not a repository capability and must not be described as 'source exists' or 'empty directory in the repo' — neither claim is accurate for untracked content."
+  },
   "paths": {
-    "/v2/teams/current": { "status": "planned", "description": "Active Team context for the authenticated manager." },
-    "/v2/boards": { "status": "planned", "description": "List or create Boards (layout/content containers)." },
-    "/v2/displays": { "status": "planned", "description": "List Displays owned by the authenticated Team." },
-    "/v2/displays/{display_id}/credential-rotate": { "status": "planned", "description": "Rotate a Display's device credential." },
-    "/v2/sessions": { "status": "planned", "description": "List or create Sessions." },
+    "/v2/teams/current": { "status": "planned", "description": "Active Team context for the authenticated manager. No scena-api router exists to serve this." },
+    "/v2/boards": { "status": "planned", "description": "List or create Boards. Provisional mapping only — the live schema has no boards table; the nearest analog is display_layouts. See docs/DATABASE_SCHEMA.md 'Vocabulary gap'." },
+    "/v2/displays": { "status": "planned", "description": "List Displays owned by the authenticated Team. Live analog table: screens." },
+    "/v2/displays/{display_id}/credential-rotate": { "status": "planned", "description": "Rotate a Display's device credential. Live analog: screen-credential-rotate (source_created, not deployed — see liveEdgeFunctions)." },
+    "/v2/sessions": { "status": "planned", "description": "List or create Sessions. Live analog table: display_sessions." },
     "/v2/sessions/{session_id}/start": { "status": "planned", "description": "Start a Session." },
     "/v2/sessions/{session_id}/stop": { "status": "planned", "description": "Stop a Session." },
-    "/v2/menus": { "status": "planned", "description": "List or create Menus." },
-    "/v2/scenes": { "status": "planned", "description": "List or create Scenes tied to Menus or Presentations." },
-    "/v2/layouts": { "status": "planned", "description": "List or create Layouts." },
-    "/v2/presentations": { "status": "planned", "description": "List Presentation assets and metadata." },
-    "/v2/automations": { "status": "planned", "description": "List or create Automations." }
+    "/v2/menus": { "status": "planned", "description": "List or create Menus. Live analog table: menus." },
+    "/v2/scenes": { "status": "planned", "description": "List or create Scenes tied to Menus or Presentations. Live analog table: scenes." },
+    "/v2/layouts": { "status": "planned", "description": "List or create Layouts. Live analog table: display_layouts — overlaps with /v2/boards above; not yet reconciled into one canonical resource. See docs/DATABASE_SCHEMA.md." },
+    "/v2/presentations": { "status": "planned", "description": "List Presentation assets and metadata. Live analog table: presentation_assets. SOP canonical term is 'Asset', not 'Presentation' — not yet reconciled." },
+    "/v2/automations": { "status": "planned", "description": "List or create Automations. Live analog: automations-run (source_created, not deployed) and table display_automations." }
   },
+  "pathsCaveat": "These 12 paths were introduced in v1.0.5 without a recorded design decision (no scena-api source, no per-resource ADR). docs/API_V2_PROGRESS.md Session 1 Phase 2 explicitly kept openapi.json/api-inventory.json paths EMPTY on the grounds that fabricating unbuild routes creates a false 'endpoint exists' impression. Treat this paths block as an unreviewed proposal, not a ratified target contract, until an owner confirms it.",
   "liveEdgeFunctions": [
     {
-      "name": "screen-register",
-      "path": "/functions/v1/screen-register",
-      "auth": "none",
-      "purpose": "Kiosk registration, device credential issuance, and short-lived pairing code creation.",
-      "status": "live"
+      "name": "mjcc-sso-exchange",
+      "path": "/functions/v1/mjcc-sso-exchange",
+      "auth": "MJCC handoff code",
+      "purpose": "Legacy MJCC SSO exchange. Superseded by native Supabase Auth (Google OAuth + email link) in API_V2_PROGRESS.md Session 1 Phase 1.",
+      "status": "deployed_unused",
+      "deploymentStatus": "deployed",
+      "frontendReferenceStatus": "no active reference found (src/auth/sso.ts and src/app/useSsoExchange.ts, its only callers, were deleted per API_V2_PROGRESS.md Session 1 Phase 1)",
+      "runtimeStatus": "deprecated behavior confirmed at the currently deployed version — re-verified via mcp__supabase__get_logs this session: version 9 (currently deployed) returned OPTIONS 404 at 2026-07-21T19:27 UTC. An earlier deployment, version 4, had returned POST 410 at 2026-07-21T06:04 UTC, but that is a superseded version, not the current one. No POST request against version 9 appeared in the available log window, so the current version's exact POST response is not directly observed — only that it is not serving normal SSO traffic (404 on OPTIONS is itself abnormal for a CORS preflight).",
+      "notes": "CORRECTED: a prior draft of this file stated 'returns HTTP 410 Gone' as a current fact, sourced from a different (superseded) deployment's historical logs. Deletion is explicitly deferred to a later cleanup phase, not yet done."
     },
     {
       "name": "display-gateway",
@@ -38,31 +50,10 @@
       "status": "live"
     },
     {
-      "name": "screen-credential-rotate",
-      "path": "/functions/v1/screen-credential-rotate",
-      "auth": "manager JWT",
-      "purpose": "Rotate a claimed screen's credential and return the new device token once.",
-      "status": "live"
-    },
-    {
       "name": "presentation-upload",
       "path": "/functions/v1/presentation-upload",
       "auth": "manager JWT",
       "purpose": "Create presentation ingestion jobs and confirm upload with the LXC service.",
-      "status": "live"
-    },
-    {
-      "name": "presentation-callback",
-      "path": "/functions/v1/presentation-callback",
-      "auth": "shared secret",
-      "purpose": "LXC callback for presentation processing completion or failure.",
-      "status": "live"
-    },
-    {
-      "name": "automations-run",
-      "path": "/functions/v1/automations-run",
-      "auth": "shared secret",
-      "purpose": "Scheduler/worker endpoint that claims due automations and executes session/display actions.",
       "status": "live"
     },
     {
@@ -85,6 +76,46 @@
       "auth": "Stripe webhook signature",
       "purpose": "Ingest Stripe events, deduplicate them, and synchronize subscription status to the database.",
       "status": "live"
+    },
+    {
+      "name": "screen-register",
+      "path": "/functions/v1/screen-register",
+      "auth": "none",
+      "purpose": "Kiosk registration, device credential issuance, and short-lived pairing code creation. src/lib/display.ts calls this by name, but it is not currently deployed.",
+      "status": "source_created",
+      "notes": "CORRECTED from prior README/inventory which marked this 'live'. It is NOT in mcp__supabase__list_edge_functions' deployed set. Because screen-claim (deployed) has nothing to claim without screen-register (not deployed), the full kiosk registration-and-pairing flow described in docs/sop/Purpose.md §12 Stage 8 cannot currently complete end to end in production."
+    },
+    {
+      "name": "screen-credential-rotate",
+      "path": "/functions/v1/screen-credential-rotate",
+      "auth": "manager JWT",
+      "purpose": "Rotate a claimed screen's credential and return the new device token once.",
+      "status": "source_created",
+      "notes": "CORRECTED from prior README/inventory which marked this 'live'. Not in the deployed set."
+    },
+    {
+      "name": "presentation-callback",
+      "path": "/functions/v1/presentation-callback",
+      "auth": "shared secret",
+      "purpose": "LXC callback for presentation processing completion or failure.",
+      "status": "source_created",
+      "notes": "CORRECTED from prior README/inventory which marked this 'live'. Not in the deployed set. presentation-upload (deployed) can create ingestion jobs, but nothing deployed currently reports their completion back."
+    },
+    {
+      "name": "automations-run",
+      "path": "/functions/v1/automations-run",
+      "auth": "shared secret",
+      "purpose": "Scheduler/worker endpoint that claims due automations and executes session/display actions.",
+      "status": "source_created",
+      "notes": "CORRECTED from prior README/inventory which marked this 'live'. Not in the deployed set. display_automations rows can be created but nothing deployed currently executes them."
+    },
+    {
+      "name": "marquee-sso",
+      "path": "not applicable — no tracked implementation exists",
+      "auth": "not applicable",
+      "purpose": "No tracked marquee-sso implementation source was found. A local empty directory (supabase/functions/marquee-sso/, no index.ts, untracked by git — git does not track empty directories) may exist on disk, but it is not a repository capability: not committed, not deployed, not documented anywhere prior to this pass. Likely a leftover from the product's earlier 'Marquee' name, before the product was renamed to Scena.",
+      "status": "not_in_repository",
+      "notes": "CORRECTED: an earlier draft of this entry called it 'source' and separately called it 'empty' in different places — those are contradictory. The accurate statement is the purpose field above. Flagged for an owner decision: create real source under this name if it's still needed, or remove the stray local directory; either way it does not currently exist as repository-tracked capability."
     }
   ],
   "sharedInfrastructure": {
@@ -99,11 +130,11 @@
       "webhooks": "Subscription lifecycle and payment event synchronization."
     },
     "lxcPresentationService": {
-      "jobBroker": "presentation-upload creates jobs and returns upload URLs.",
-      "callback": "presentation-callback receives processing completion and ready manifest keys."
+      "jobBroker": "presentation-upload creates jobs and returns upload URLs. Deployed.",
+      "callback": "presentation-callback receives processing completion and ready manifest keys. NOT deployed — see liveEdgeFunctions."
     },
     "scheduler": {
-      "automationWorker": "automations-run executes scheduled actions and reschedules cron/once automations." 
+      "automationWorker": "automations-run executes scheduled actions and reschedules cron/once automations. NOT deployed — see liveEdgeFunctions."
     }
   }
 }

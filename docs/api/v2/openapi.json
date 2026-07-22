@@ -1,5 +1,11 @@
 {
   "openapi": "3.1.0",
+  "_verification": {
+    "status": "not_reverified",
+    "authoritative": false,
+    "checkedThisPass": ["path names cross-referenced against api-inventory.json's planned-paths caveat only"],
+    "note": "Not independently re-verified against implementation this pass (2026-07-22) — there is no scena-api router deployed to verify against. Treat as a planned/design draft, not a ratified or live-tested contract. See docs/API_V2.md's document map for per-file verification status."
+  },
   "info": {
     "title": "Scena API v2",
     "version": "2",

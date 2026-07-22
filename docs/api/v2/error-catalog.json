@@ -1,5 +1,10 @@
 {
   "generated": "2026-07-22",
+  "_verification": {
+    "status": "not_reverified",
+    "authoritative": false,
+    "note": "Not independently diffed against src/shared/errors.ts / supabase/functions/_shared/errors.ts this pass. Spot-checked only: no false deployment-status claims found (codes describe the shared contract, not per-function live status), so left unmodified rather than rewritten without cause."
+  },
   "note": "Error catalog for Scena shared response contract. These codes are used by both live edge functions and the planned v2 router.",
   "errors": [
     { "code": "UNAUTHENTICATED", "description": "Authentication is required.", "category": "auth" },

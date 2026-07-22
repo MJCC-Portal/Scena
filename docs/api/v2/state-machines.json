@@ -1,6 +1,11 @@
 {
   "generated": "2026-07-22",
-  "note": "Runtime state-machine definitions derived from live edge function implementation and domain code.",
+  "_verification": {
+    "status": "not_reverified",
+    "authoritative": false,
+    "note": "Transition triggers below are accurate as SOURCE-level behavior (function names checked against actual supabase/functions/*/index.ts this pass), but the file's original wording ('derived from live edge function implementation') overstated deployment status: screen-credential-rotate, presentation-callback, and automations-run are source_created, not deployed — see api-inventory.json. A transition whose trigger is one of those three functions cannot currently occur in production."
+  },
+  "note": "Runtime state-machine definitions derived from edge function source and domain code. Not all referenced functions are deployed — see api-inventory.json for per-function deployment status before assuming a transition can occur in production.",
   "machines": [
     {
       "name": "Screen Pairing",

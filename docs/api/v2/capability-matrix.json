@@ -1,13 +1,13 @@
 {
   "generated": "2026-07-22",
-  "note": "Implementation status of planned API v2 capabilities versus current live edge function support.",
+  "note": "Implementation status of planned API v2 capabilities versus current live edge function support. 'live' here means every edge function the feature depends on is deployed AND called by current src/ code, per mcp__supabase__list_edge_functions cross-referenced against api-inventory.json. A feature needing two functions where only one is deployed is NOT live end to end, even if the deployed half works.",
   "features": [
     {
       "feature": "Manager v2 router",
       "planned": true,
       "live": false,
       "liveSurface": [],
-      "notes": "The v2 client foundation exists in src/api/v2, but no scena-api router is deployed yet."
+      "notes": "The v2 client foundation exists in src/api/v2 and supabase/functions/_shared/v2, but no scena-api router is deployed yet. api-inventory.json's 12 planned paths are an unreviewed proposal, not a ratified contract — see its pathsCaveat."
     },
     {
       "feature": "Current Team context",
@@ -17,46 +17,60 @@
       "notes": "Access to current active Team is planned for the v2 router via manager JWT."
     },
     {
-      "feature": "Display registration and pairing",
+      "feature": "Kiosk registration",
+      "planned": true,
+      "live": false,
+      "liveSurface": ["screen-register"],
+      "notes": "CORRECTED (was folded into 'Display registration and pairing' as live:true). screen-register is source_created only, not deployed. A kiosk cannot currently self-register in production."
+    },
+    {
+      "feature": "Manager-side display pairing",
       "planned": true,
       "live": true,
-      "liveSurface": ["screen-register", "screen-claim"],
-      "notes": "Live kiosk onboarding exists through separate edge functions with device-token and pairing-code flows."
+      "liveSurface": ["screen-claim"],
+      "notes": "screen-claim is deployed and live. It has nothing to claim, however, without a screen row created by screen-register (not deployed) — so this capability is live in isolation but not reachable end to end. See docs/sop/Purpose.md §12 Stage 8."
     },
     {
       "feature": "Kiosk state polling",
       "planned": true,
       "live": true,
       "liveSurface": ["display-gateway"],
-      "notes": "Kiosk polling is implemented as a standalone gateway endpoint that resolves display state on every poll."
+      "notes": "Kiosk polling is implemented as a standalone gateway endpoint that resolves display state on every poll. Deployed and called by src/lib/display.ts."
     },
     {
       "feature": "Credential rotation",
       "planned": true,
-      "live": true,
+      "live": false,
       "liveSurface": ["screen-credential-rotate"],
-      "notes": "Managers can rotate display credentials in live edge function code."
+      "notes": "CORRECTED (was live:true). screen-credential-rotate is source_created only, not deployed. Managers cannot currently rotate a display credential in production."
     },
     {
-      "feature": "Presentation ingestion",
+      "feature": "Presentation ingestion (upload)",
       "planned": true,
       "live": true,
-      "liveSurface": ["presentation-upload", "presentation-callback"],
-      "notes": "Presentation upload and processing callbacks are live, with direct LXC integration."
+      "liveSurface": ["presentation-upload"],
+      "notes": "presentation-upload is deployed and live. Split out from 'Presentation ingestion' — see the callback capability below, which is not live."
+    },
+    {
+      "feature": "Presentation ingestion (processing callback)",
+      "planned": true,
+      "live": false,
+      "liveSurface": ["presentation-callback"],
+      "notes": "CORRECTED. presentation-callback is source_created only, not deployed. An upload job can be created but its LXC processing result cannot currently be reported back, so no upload can reach 'ready' status through the live path today."
     },
     {
       "feature": "Scheduled automations",
       "planned": true,
-      "live": true,
+      "live": false,
       "liveSurface": ["automations-run"],
-      "notes": "Workflow automation execution is live via a trusted worker endpoint."
+      "notes": "CORRECTED (was live:true). automations-run is source_created only, not deployed. display_automations rows can be created but nothing deployed currently executes them."
     },
     {
       "feature": "Stripe Checkout",
       "planned": true,
       "live": true,
       "liveSurface": ["billing-checkout"],
-      "notes": "Stripe Checkout session creation is implemented in a live edge function."
+      "notes": "Stripe Checkout session creation is implemented in a live edge function. Not yet click-tested end to end per docs/API_V2_PROGRESS.md and docs/sop/Purpose.md §5."
     },
     {
       "feature": "Stripe Billing Portal",
@@ -70,28 +84,49 @@
       "planned": true,
       "live": true,
       "liveSurface": ["billing-webhook"],
-      "notes": "Stripe events are ingested, deduplicated, and used to sync subscription state."
+      "notes": "Stripe events are ingested, deduplicated, and used to sync subscription state via finalize_paid_team_subscription / sync_paid_team_subscription."
+    },
+    {
+      "feature": "Native authentication (Google OAuth + email link)",
+      "planned": false,
+      "live": true,
+      "liveSurface": ["Supabase Auth", "src/auth/session.ts"],
+      "notes": "Not an edge function — uses Supabase Auth directly. Replaced the legacy MJCC SSO exchange per API_V2_PROGRESS.md Session 1 Phase 1. OAuth-initiation leg was browser-verified; the post-consent callback leg was only unit-tested, not click-tested, per that same ledger entry."
+    },
+    {
+      "feature": "Legacy MJCC SSO exchange",
+      "planned": false,
+      "live": false,
+      "liveSurface": ["mjcc-sso-exchange"],
+      "notes": "Deployment status: deployed (v9, ACTIVE). Frontend reference status: no active reference found. Runtime status: deprecated behavior confirmed at the currently deployed version (re-verified via get_logs this session — v9 returned OPTIONS 404; a prior claim of 'returns 410 Gone' was sourced from a superseded version-4 deployment's older logs and has been corrected — see api-inventory.json for the full timestamped detail). Superseded by native authentication above. Deletion is a tracked, deferred cleanup item, not yet done."
     },
     {
       "feature": "Shared API error contract",
       "planned": true,
       "live": true,
-      "liveSurface": ["all edge functions"],
-      "notes": "Both live functions and planned v2 use the same stable error code catalog."
+      "liveSurface": ["all deployed edge functions"],
+      "notes": "Both live functions and planned v2 use the same stable error code catalog (src/shared/errors.ts, supabase/functions/_shared/errors.ts)."
     },
     {
       "feature": "Idempotency headers",
       "planned": true,
       "live": false,
       "liveSurface": ["client only"],
-      "notes": "Idempotency client headers are supported in src/api/v2, but no server-side store exists for live v2 endpoints yet."
+      "notes": "Idempotency client headers are supported in src/api/v2, but no server-side idempotency_keys table or store exists yet. The DDL is drafted (see docs/API_V2.md) but not applied."
+    },
+    {
+      "feature": "Audit event log",
+      "planned": true,
+      "live": false,
+      "liveSurface": [],
+      "notes": "docs/sop/Purpose.md requires audit events be recorded for Team deletion and other sensitive actions. No audit_events table exists in the live schema (verified via mcp__supabase__list_tables). supabase/functions/_shared/v2/audit.ts exists as shape-only scaffolding, explicitly not wired to any table."
     },
     {
       "feature": "Organization invalidation broadcast",
       "planned": false,
       "live": true,
       "liveSurface": ["display-gateway", "domain mutations"],
-      "notes": "Realtime broadcast invalidation is a live implementation detail used by kiosk polling."
+      "notes": "Realtime broadcast invalidation is a live implementation detail used by kiosk polling. Not an edge-function deployment question — wired directly into src/domain/*.ts mutations and Supabase Realtime."
     }
   ]
 }
