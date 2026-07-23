@@ -5,6 +5,7 @@
 import { useEffect, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { completeAuthRedirect } from "../../auth/session";
+import { Spinner } from "../../components/ui/Progress";
 
 type Outcome = { to: "/login"; error: string } | { to: "/app/home" };
 
@@ -39,10 +40,10 @@ export function CallbackPage() {
 
   if (!outcome) {
     return (
-      <main className="auth-shell">
-        <div className="auth-card loading-card">
-          <div className="spinner" />
-          <p>Completing sign-in…</p>
+      <main className="scena-auth-shell">
+        <div className="scena-auth-card scena-glass-medium" style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16 }}>
+          <Spinner />
+          <p style={{ color: "var(--scena-text-secondary)", fontSize: "var(--scena-text-sm)" }}>Completing sign-in…</p>
         </div>
       </main>
     );

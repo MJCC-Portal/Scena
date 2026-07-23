@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { RouterProvider } from "react-router-dom";
 import { router } from "./app/router";
 import { convertLegacyKioskHash } from "./app/legacyKioskRedirect";
+import { ToastProvider } from "./components/ui/Toast";
 import "./styles.css";
 
 // Legacy kiosk compatibility: a kiosk that opened Scena before this
@@ -14,6 +15,8 @@ if (legacyPath) window.history.replaceState(null, "", legacyPath);
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <RouterProvider router={router} />
+    <ToastProvider>
+      <RouterProvider router={router} />
+    </ToastProvider>
   </StrictMode>,
 );

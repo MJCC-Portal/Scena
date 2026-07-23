@@ -5,7 +5,6 @@
 // manager subtree never imports src/lib/display.ts.
 
 import { createBrowserRouter, type RouteObject } from "react-router-dom";
-import { RootRoute } from "./RootRoute";
 import { ManagerGuard } from "./ManagerGuard";
 import { AppShellRoute } from "./AppShellRoute";
 import { RouteErrorBoundary } from "./RouteErrorBoundary";
@@ -13,18 +12,20 @@ import { LoginPage } from "../pages/auth/LoginPage";
 import { CallbackPage } from "../pages/auth/CallbackPage";
 import { UnauthorizedPage } from "../pages/auth/UnauthorizedPage";
 import { HomePage } from "../pages/home/HomePage";
+import { BoardsPage } from "../pages/boards/BoardsPage";
+import { NewBoardPage } from "../pages/boards/NewBoardPage";
+import { AssetsPage } from "../pages/assets/AssetsPage";
+import { AssetDetailPage } from "../pages/assets/AssetDetailPage";
 import { LocationsPage } from "../pages/locations/LocationsPage";
-import { MenusPage } from "../pages/menus/MenusPage";
-import { NewMenuPage } from "../pages/menus/NewMenuPage";
-import { ScenesPage } from "../pages/scenes/ScenesPage";
-import { NewScenePage } from "../pages/scenes/NewScenePage";
-import { LayoutsPage } from "../pages/layouts/LayoutsPage";
-import { NewLayoutPage } from "../pages/layouts/NewLayoutPage";
 import { ScreensPage } from "../pages/screens/ScreensPage";
+import { ScreenDetailPage } from "../pages/screens/ScreenDetailPage";
 import { PairScreenPage } from "../pages/screens/PairScreenPage";
 import { SessionsPage } from "../pages/sessions/SessionsPage";
 import { NewSessionPage } from "../pages/sessions/NewSessionPage";
+import { SessionDetailPage } from "../pages/sessions/SessionDetailPage";
 import { AutomationsPage } from "../pages/automations/AutomationsPage";
+import { MembersPage } from "../pages/members/MembersPage";
+import { BillingPage } from "../pages/billing/BillingPage";
 import { PlanSettingsPage } from "../pages/settings/PlanSettingsPage";
 import { SettingsIndexPage } from "../pages/settings/SettingsIndexPage";
 import { NotFoundPage } from "../pages/not-found/NotFoundPage";
@@ -32,17 +33,26 @@ import { PlaceholderPage } from "../pages/shared/PlaceholderPage";
 import { DisplayRoute } from "../display/DisplayRoute";
 import { DisplayErrorBoundary } from "../display/DisplayErrorBoundary";
 import { ROUTE_METADATA } from "./route-metadata";
+import { lazyRoute } from "./lazyRoute";
 
 function placeholder(path: string) {
   const meta = ROUTE_METADATA.find((m) => m.path === path);
   return <PlaceholderPage title={meta?.label ?? path} note={meta?.note} />;
 }
 
+// Lazy-loaded: the public landing page (never needed once inside /app), the
+// Board editor (the heaviest single screen — canvas/drag/resize code), and
+// the internal-only dev showcase (never needed in the real product at all).
+const LandingPageLazy = () => lazyRoute(() => import("../pages/landing/LandingPage").then((m) => ({ default: m.LandingPage })));
+const BoardEditorPageLazy = () => lazyRoute(() => import("../pages/boards/BoardEditorPage").then((m) => ({ default: m.BoardEditorPage })));
+const ComponentShowcasePageLazy = () => lazyRoute(() => import("../pages/dev/ComponentShowcasePage").then((m) => ({ default: m.ComponentShowcasePage })));
+const EditorPreviewPageLazy = () => lazyRoute(() => import("../pages/dev/EditorPreviewPage").then((m) => ({ default: m.EditorPreviewPage })));
+
 // Shared between the real browser router below and the memory router
 // used in tests (src/app/router.test.tsx) — one source of truth for the
 // route tree.
 export const routeTree: RouteObject[] = [
-  { path: "/", element: <RootRoute /> },
+  { path: "/", element: LandingPageLazy() },
   { path: "/login", element: <LoginPage /> },
   { path: "/auth/callback", element: <CallbackPage /> },
   { path: "/unauthorized", element: <UnauthorizedPage /> },
@@ -51,39 +61,29 @@ export const routeTree: RouteObject[] = [
     element: <ManagerGuard />,
     errorElement: <RouteErrorBoundary />,
     children: [
+      // Full-viewport Board editor — deliberately NOT nested under
+      // AppShellRoute's rail/topbar chrome, same as Canva's own editor is a
+      // distinct full-screen surface. Still guarded by ManagerGuard above,
+      // so useManagerContext() works normally.
+      { path: "boards/:boardId", element: BoardEditorPageLazy() },
       {
         element: <AppShellRoute />,
         children: [
           { path: "home", element: <HomePage /> },
+          { path: "boards", element: <BoardsPage /> },
+          { path: "boards/new", element: <NewBoardPage /> },
+          { path: "assets", element: <AssetsPage /> },
+          { path: "assets/:assetId", element: <AssetDetailPage /> },
           { path: "locations", element: <LocationsPage /> },
-          { path: "locations/:locationId", element: placeholder("/app/locations/:locationId") },
-          { path: "menus", element: <MenusPage /> },
-          { path: "menus/new", element: <NewMenuPage /> },
-          { path: "menus/:menuId", element: placeholder("/app/menus/:menuId") },
-          { path: "menus/:menuId/edit", element: placeholder("/app/menus/:menuId/edit") },
-          { path: "scenes", element: <ScenesPage /> },
-          { path: "scenes/new", element: <NewScenePage /> },
-          { path: "scenes/:sceneId", element: placeholder("/app/scenes/:sceneId") },
-          { path: "scenes/:sceneId/edit", element: placeholder("/app/scenes/:sceneId/edit") },
-          { path: "layouts", element: <LayoutsPage /> },
-          { path: "layouts/new", element: <NewLayoutPage /> },
-          { path: "layouts/:layoutId", element: placeholder("/app/layouts/:layoutId") },
-          { path: "layouts/:layoutId/edit", element: placeholder("/app/layouts/:layoutId/edit") },
-          { path: "presentations", element: placeholder("/app/presentations") },
-          { path: "presentations/:presentationId", element: placeholder("/app/presentations/:presentationId") },
           { path: "screens", element: <ScreensPage /> },
           { path: "screens/pair", element: <PairScreenPage /> },
-          { path: "screens/:screenId", element: placeholder("/app/screens/:screenId") },
+          { path: "screens/:screenId", element: <ScreenDetailPage /> },
           { path: "sessions", element: <SessionsPage /> },
           { path: "sessions/new", element: <NewSessionPage /> },
-          { path: "sessions/:sessionId", element: placeholder("/app/sessions/:sessionId") },
-          { path: "sessions/:sessionId/edit", element: placeholder("/app/sessions/:sessionId/edit") },
-          { path: "sessions/:sessionId/live", element: placeholder("/app/sessions/:sessionId/live") },
+          { path: "sessions/:sessionId", element: <SessionDetailPage /> },
           { path: "automations", element: <AutomationsPage /> },
-          { path: "automations/new", element: placeholder("/app/automations/new") },
-          { path: "automations/:automationId", element: placeholder("/app/automations/:automationId") },
-          { path: "automations/:automationId/edit", element: placeholder("/app/automations/:automationId/edit") },
-          { path: "members", element: placeholder("/app/members") },
+          { path: "members", element: <MembersPage /> },
+          { path: "billing", element: <BillingPage /> },
           { path: "settings", element: <SettingsIndexPage /> },
           { path: "settings/organization", element: placeholder("/app/settings/organization") },
           { path: "settings/plan", element: <PlanSettingsPage /> },
@@ -97,6 +97,9 @@ export const routeTree: RouteObject[] = [
     element: <DisplayRoute />,
     errorElement: <DisplayErrorBoundary />,
   },
+  // Internal-only design-system QA pages — never linked from production nav.
+  { path: "/dev/components", element: ComponentShowcasePageLazy() },
+  { path: "/dev/editor", element: EditorPreviewPageLazy() },
   { path: "*", element: <NotFoundPage /> },
 ];
 

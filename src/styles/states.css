@@ -1,0 +1,98 @@
+/* Playful full-viewport states — 404, application error, placeholders.
+   Grain + drifting flower petals on the navy brand backdrop. All motion is
+   disabled under prefers-reduced-motion. */
+
+.scena-void {
+  position: relative;
+  min-height: max(560px, 78vh);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: var(--scena-space-4);
+  padding: var(--scena-space-10) var(--scena-space-6);
+  overflow: hidden;
+  background:
+    radial-gradient(1100px 560px at 50% -10%, rgba(91, 124, 250, 0.16), transparent 62%),
+    var(--scena-bg);
+}
+
+/* Film-grain noise overlay (inline SVG turbulence — no asset request). */
+.scena-void__noise {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.30;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.55'/%3E%3C/svg%3E");
+}
+
+.scena-void__petal {
+  position: absolute;
+  display: block;
+  pointer-events: none;
+  animation:
+    scena-petal-drift var(--petal-duration, 12s) ease-in-out infinite alternate,
+    scena-petal-spin calc(var(--petal-duration, 12s) * 2.4) linear infinite;
+  will-change: transform;
+}
+
+@keyframes scena-petal-drift {
+  from { translate: 0 0; }
+  to { translate: 0 -26px; }
+}
+
+@keyframes scena-petal-spin {
+  from { rotate: 0deg; }
+  to { rotate: 360deg; }
+}
+
+.scena-void__code {
+  font-family: var(--scena-font-display);
+  font-size: clamp(5.5rem, 18vw, 11rem);
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.04em;
+  background: var(--scena-gradient-primary);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 10px 42px rgba(91, 124, 250, 0.35));
+  animation: scena-void-bob 6s ease-in-out infinite;
+}
+
+@keyframes scena-void-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+
+.scena-void h1 {
+  font-family: var(--scena-font-display);
+  font-size: var(--scena-text-2xl);
+}
+
+.scena-void__desc {
+  max-width: 460px;
+  color: var(--scena-text-secondary);
+  font-size: var(--scena-text-sm);
+  line-height: 1.7;
+}
+
+.scena-void__desc code {
+  font-family: var(--scena-font-mono);
+  font-size: 0.85em;
+  color: var(--scena-cyan-soft);
+  background: var(--scena-surface-2);
+  border: 1px solid var(--scena-border-subtle);
+  border-radius: var(--scena-radius-xs);
+  padding: 1px 6px;
+  word-break: break-all;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scena-void__petal,
+  .scena-void__code {
+    animation: none;
+  }
+}

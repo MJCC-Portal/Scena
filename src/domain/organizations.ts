@@ -5,6 +5,7 @@ import { requireRole, requireUuid } from "../shared/validation";
 export interface Member {
   user_id: string;
   role: string;
+  status: string;
   created_at: string;
 }
 
@@ -25,7 +26,7 @@ export interface SessionScreenCapacity extends Entitlement {
 export async function listMembers(orgId: string): Promise<Member[]> {
   requireUuid(orgId, "org_id");
   const supabase = requireSupabase();
-  const { data, error } = await supabase.from("organization_members").select("user_id, role, created_at").eq("org_id", orgId);
+  const { data, error } = await supabase.from("organization_members").select("user_id, role, status, created_at").eq("org_id", orgId);
   if (error) throw mapPostgresError(error);
   return data ?? [];
 }
@@ -44,7 +45,7 @@ export async function upsertMember(orgId: string, userId: string, role: string):
   const { data, error } = await supabase
     .from("organization_members")
     .upsert({ org_id: orgId, user_id: userId, role }, { onConflict: "org_id,user_id" })
-    .select("user_id, role, created_at")
+    .select("user_id, role, status, created_at")
     .single();
   if (error) throw mapPostgresError(error);
   return data;

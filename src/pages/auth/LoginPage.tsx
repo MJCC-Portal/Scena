@@ -5,8 +5,15 @@
 
 import { useEffect, useState, type FormEvent } from "react";
 import { Navigate, useLocation } from "react-router-dom";
+import { GoogleLogo } from "@phosphor-icons/react";
 import { sendEmailSignInLink, signInWithGoogle } from "../../auth/session";
 import { resolveManagerDestination } from "../../app/authResolution";
+import { Button } from "../../components/ui/Button";
+import { ScenaMark } from "../../components/brand/ScenaMark";
+import { Field } from "../../components/ui/Field";
+import { Input } from "../../components/ui/Input";
+import { Spinner } from "../../components/ui/Progress";
+import { ErrorBanner } from "../../components/ui/ErrorBanner";
 
 export function LoginPage() {
   const location = useLocation();
@@ -28,7 +35,15 @@ export function LoginPage() {
     return () => { active = false; };
   }, []);
 
-  if (!checked) return <main className="auth-shell"><div className="auth-card loading-card"><div className="spinner" /></div></main>;
+  if (!checked) {
+    return (
+      <main className="scena-auth-shell">
+        <div className="scena-auth-card scena-glass-medium">
+          <Spinner />
+        </div>
+      </main>
+    );
+  }
   if (alreadyAuthenticated) return <Navigate to="/app/home" replace />;
 
   async function handleGoogleSignIn() {
@@ -55,28 +70,45 @@ export function LoginPage() {
   }
 
   return (
-    <main className="auth-shell">
-      <section className="auth-card">
-        <div className="wordmark"><span className="bulbs" aria-hidden="true"><i /><i /><i /></span>SCENA</div>
+    <main className="scena-auth-shell">
+      <section className="scena-auth-card scena-glass-medium">
+        <div className="scena-auth-card__logo" aria-hidden="true"><ScenaMark size={26} color="#fff" /></div>
         <h1>Sign in to Scena</h1>
-        <p className="muted">Sign in with Google, or with a one-time email link.</p>
-        {(passedError || formError) && <div className="error">{passedError || formError}</div>}
-        <button className="btn gold" onClick={handleGoogleSignIn}>Continue with Google</button>
-        {magicLinkSent ? (
-          <p className="fine">Check {email} for a sign-in link.</p>
-        ) : (
-          <form onSubmit={handleEmailSignIn} style={{ marginTop: 16 }}>
-            <input
-              type="email"
-              required
-              placeholder="you@example.com"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-            />
-            <button className="btn" type="submit" disabled={submitting}>Email me a sign-in link</button>
-          </form>
+        <p className="scena-auth-card__desc">Sign in with Google, or with a one-time email link.</p>
+
+        {(passedError || formError) && (
+          <div style={{ marginBottom: 20, textAlign: "left" }}>
+            <ErrorBanner error={new Error(passedError || formError)} title="Sign-in failed" />
+          </div>
         )}
-        <p className="fine">Scena accounts are personal — you can create or join a Team after signing in.</p>
+
+        <Button variant="primary" block size="lg" icon={<GoogleLogo size={20} weight="bold" />} onClick={handleGoogleSignIn}>
+          Continue with Google
+        </Button>
+
+        {magicLinkSent ? (
+          <p className="scena-auth-card__fine">Check {email} for a sign-in link.</p>
+        ) : (
+          <>
+            <div className="scena-auth-divider">or</div>
+            <form onSubmit={handleEmailSignIn} className="scena-auth-form">
+              <Field label="Email">
+                <Input
+                  type="email"
+                  required
+                  placeholder="you@example.com"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                />
+              </Field>
+              <Button type="submit" variant="secondary" block disabled={submitting} loading={submitting}>
+                Email me a sign-in link
+              </Button>
+            </form>
+          </>
+        )}
+
+        <p className="scena-auth-card__fine">Scena accounts are personal — you can create or join a Team after signing in.</p>
       </section>
     </main>
   );

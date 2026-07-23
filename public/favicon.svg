@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <rect width="100" height="100" rx="22" fill="#5b7cfa"/>
+  <g fill="#ffffff" transform="translate(50 50) scale(0.82) translate(-50 -50)">
+    <path d="M50 40 C40.5 31.5 38.5 13.5 51 2 C61.5 14.5 57.5 32 50 40 Z" transform="rotate(12 50 50)"/>
+    <path d="M50 40 C40.5 31.5 38.5 13.5 51 2 C61.5 14.5 57.5 32 50 40 Z" transform="rotate(72 50 50)"/>
+    <path d="M50 40 C40.5 31.5 38.5 13.5 51 2 C61.5 14.5 57.5 32 50 40 Z" transform="rotate(132 50 50)"/>
+    <path d="M50 40 C40.5 31.5 38.5 13.5 51 2 C61.5 14.5 57.5 32 50 40 Z" transform="rotate(192 50 50)"/>
+    <path d="M50 40 C40.5 31.5 38.5 13.5 51 2 C61.5 14.5 57.5 32 50 40 Z" transform="rotate(252 50 50)"/>
+    <path d="M50 40 C40.5 31.5 38.5 13.5 51 2 C61.5 14.5 57.5 32 50 40 Z" transform="rotate(312 50 50)"/>
+  </g>
+</svg>

@@ -12,6 +12,17 @@
 
 import { useEffect, useRef, useState } from "react";
 import { forgetDevice, pollState, registerDevice, storedToken, subscribeToOrgInvalidation, type DisplayState } from "../lib/display";
+import { ScenaMark } from "../components/brand/ScenaMark";
+
+// Brand lockup shown on every non-showing kiosk state. Pure presentation —
+// ScenaMark imports nothing from src/auth/* or src/app/*, so the kiosk
+// isolation rule documented in src/app/router.tsx still holds.
+function DisplayBrand() {
+  return <div className="display-brand">
+    <span className="display-brand__mark"><ScenaMark size={44} /></span>
+    <span className="display-brand__word">SCENA</span>
+  </div>;
+}
 
 const POLL_MS = 4000;
 
@@ -96,11 +107,11 @@ export function DisplayRoute() {
       ? <LayoutRenderer state={state} />
       : state?.status === "standby"
       ? <div className="display-center">
-          <div className="wordmark"><span className="bulbs" aria-hidden="true"><i /><i /><i /></span>SCENA</div>
-          <p className="display-dim">{state.screen_name} · standby — no scene is live</p>
+          <DisplayBrand />
+          <p className="display-dim display-status"><span className="status-dot" aria-hidden="true" />{state.screen_name} · standby — no scene is live</p>
         </div>
       : <div className="display-center">
-          <div className="wordmark"><span className="bulbs" aria-hidden="true"><i /><i /><i /></span>SCENA</div>
+          <DisplayBrand />
           {pairCode ? <>
             <p className="display-dim">Enter this code in the Scena control room to pair this screen</p>
             <div className="pair-code">{pairCode}</div>

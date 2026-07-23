@@ -1,0 +1,95 @@
+@import "@fontsource-variable/bricolage-grotesque";
+@import "@fontsource-variable/instrument-sans";
+@import "@fontsource-variable/jetbrains-mono";
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  font-family: var(--scena-font-body);
+  background: var(--scena-bg);
+  color: var(--scena-text-primary);
+  font-size: var(--scena-text-base);
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+#root { height: 100%; }
+
+h1, h2, h3, h4 {
+  font-family: var(--scena-font-display);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.15;
+}
+
+a { color: inherit; text-decoration: none; }
+
+button { font-family: inherit; color: inherit; background: none; border: none; cursor: pointer; }
+input, textarea, select { font-family: inherit; color: inherit; }
+
+::selection { background: rgba(91, 124, 250, 0.28); color: var(--scena-text-primary); }
+
+/* Focus visibility — never rely on color alone, always show a ring */
+:focus { outline: none; }
+:focus-visible {
+  outline: none;
+  box-shadow: var(--scena-focus-ring);
+  border-radius: var(--scena-radius-sm);
+}
+
+/* Scrollbars */
+.scena-scroll::-webkit-scrollbar { width: 10px; height: 10px; }
+.scena-scroll::-webkit-scrollbar-thumb { background: var(--scena-surface-3); border-radius: 5px; }
+.scena-scroll::-webkit-scrollbar-thumb:hover { background: var(--scena-surface-hover); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Liquid glass — selective use only (floating nav, menus, modals, editor tool panels).
+   Never on content grids, tables, or the canvas background. */
+.scena-glass-soft {
+  background: var(--scena-glass-soft);
+  border: 1px solid var(--scena-border-subtle);
+  backdrop-filter: var(--scena-blur-soft);
+  -webkit-backdrop-filter: var(--scena-blur-soft);
+  box-shadow: inset 0 1px 0 var(--scena-glass-highlight), var(--scena-shadow-sm);
+}
+.scena-glass-medium {
+  background: var(--scena-glass-medium);
+  border: 1px solid var(--scena-border);
+  backdrop-filter: var(--scena-blur-medium);
+  -webkit-backdrop-filter: var(--scena-blur-medium);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07), var(--scena-shadow-md);
+}
+.scena-glass-strong {
+  background: var(--scena-glass-strong);
+  border: 1px solid var(--scena-border-strong);
+  backdrop-filter: var(--scena-blur-strong);
+  -webkit-backdrop-filter: var(--scena-blur-strong);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), var(--scena-shadow-lg);
+}
+@supports not (backdrop-filter: blur(1px)) {
+  .scena-glass-soft, .scena-glass-medium, .scena-glass-strong {
+    background: var(--scena-surface-2);
+  }
+}
+
+/* Layout helpers shared across pages */
+.scena-page {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: var(--scena-space-8) var(--scena-space-8) var(--scena-space-24);
+}
+@media (max-width: 1024px) { .scena-page { padding: var(--scena-space-6); } }
+@media (max-width: 640px) { .scena-page { padding: var(--scena-space-4); } }
+
+.scena-container-narrow { max-width: 1040px; margin: 0 auto; }
+.scena-visually-hidden {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}

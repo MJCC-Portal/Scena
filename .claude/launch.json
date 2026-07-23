@@ -6,6 +6,12 @@
       "runtimeExecutable": "npx.cmd",
       "runtimeArgs": ["--yes", "serve", "-s", "-l", "5173", "dist"],
       "port": 5173
+    },
+    {
+      "name": "scena-dev",
+      "runtimeExecutable": "cmd.exe",
+      "runtimeArgs": ["/c", "cd /d C:\\Users\\ogdev\\scena-local && npm run dev -- --port 5174 --strictPort"],
+      "port": 5174
     }
   ]
 }

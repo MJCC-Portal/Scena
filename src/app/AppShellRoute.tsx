@@ -1,120 +1,71 @@
-// Application shell for /app/* with the selected Workspace exposed by
-// ManagerGuard. Visual Workspace switching lands with the UI phase; the
-// workspace-context API and account context already support it.
+// Application shell for /app/* — primary icon rail, top utility bar with
+// Workspace switcher + account menu, and the routed page content. The
+// Workspace switcher and multi-Workspace account context are real
+// (workspace-context Edge Function); this shell is the first UI to expose
+// them visually.
 
-import { useEffect, useState } from "react";
+import type { ReactNode } from "react";
 import { NavLink, Outlet } from "react-router-dom";
+import {
+  House, SquaresFour, Images, Monitor, Broadcast, Lightning, UsersThree, Gear,
+  CreditCard, MapPin,
+} from "@phosphor-icons/react";
+import { ScenaMark } from "../components/brand/ScenaMark";
 import { useManagerContext } from "./ManagerContextProvider";
-import { signOut } from "../auth/session";
-import * as Locations from "../domain/locations";
+import { WorkspaceSwitcher } from "../components/navigation/WorkspaceSwitcher";
+import { AccountMenu } from "../components/navigation/AccountMenu";
 
-const NAV_GROUPS: Array<{
+interface RailItem {
+  to: string;
   label: string;
-  items: Array<{ to: string; label: string }>;
-}> = [
-  {
-    label: "Overview",
-    items: [
-      { to: "/app/home", label: "Home" },
-      { to: "/app/locations", label: "Locations" },
-    ],
-  },
-  {
-    label: "Content",
-    items: [
-      { to: "/app/menus", label: "Menus" },
-      { to: "/app/scenes", label: "Scenes" },
-      { to: "/app/layouts", label: "Layouts" },
-      { to: "/app/presentations", label: "Presentations" },
-    ],
-  },
-  {
-    label: "Display",
-    items: [
-      { to: "/app/screens", label: "Screens" },
-      { to: "/app/sessions", label: "Sessions" },
-      { to: "/app/automations", label: "Automations" },
-    ],
-  },
-  {
-    label: "Workspace",
-    items: [
-      { to: "/app/members", label: "Members" },
-      { to: "/app/settings", label: "Settings" },
-    ],
-  },
+  icon: ReactNode;
+  end?: boolean;
+}
+
+const RAIL_ITEMS: RailItem[] = [
+  { to: "/app/home", label: "Home", icon: <House size={22} />, end: true },
+  { to: "/app/boards", label: "Boards", icon: <SquaresFour size={22} /> },
+  { to: "/app/assets", label: "Assets", icon: <Images size={22} /> },
+  { to: "/app/screens", label: "Displays", icon: <Monitor size={22} /> },
+  { to: "/app/sessions", label: "Sessions", icon: <Broadcast size={22} /> },
+  { to: "/app/automations", label: "Automations", icon: <Lightning size={22} /> },
+  { to: "/app/locations", label: "Locations", icon: <MapPin size={22} /> },
+  { to: "/app/members", label: "Members", icon: <UsersThree size={22} /> },
+  { to: "/app/billing", label: "Billing", icon: <CreditCard size={22} /> },
+  { to: "/app/settings", label: "Settings", icon: <Gear size={22} /> },
 ];
 
 export function AppShellRoute() {
   const context = useManagerContext();
-  const [locations, setLocations] = useState<Locations.Location[]>([]);
-
-  useEffect(() => {
-    Locations.listLocations(context.workspace.id)
-      .then(setLocations)
-      .catch(() => {});
-  }, [context.workspace.id]);
 
   return (
-    <div className="shell" style={{ display: "flex", minHeight: "100vh" }}>
-      <nav
-        className="rail"
-        aria-label="Main"
-        style={{ width: 200, flexShrink: 0, padding: 16 }}
-      >
-        <div className="wordmark">
-          <span className="bulbs" aria-hidden="true">
-            <i />
-            <i />
-            <i />
-          </span>
-          SCENA
-        </div>
-
-        {NAV_GROUPS.map((group) => (
-          <div key={group.label} style={{ marginTop: 16 }}>
-            <div className="rail-label">{group.label}</div>
-            {group.items.map((item) => (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                className={({ isActive }) =>
-                  isActive ? "nav-btn active" : "nav-btn"
-                }
-                style={{ display: "block" }}
-              >
-                {item.label}
-              </NavLink>
-            ))}
-          </div>
+    <div className="scena-shell">
+      <nav className="scena-rail" aria-label="Main">
+        <div className="scena-rail__logo" aria-hidden="true"><ScenaMark size={24} color="#fff" /></div>
+        {RAIL_ITEMS.map((item) => (
+          <NavLink
+            key={item.to}
+            to={item.to}
+            end={item.end}
+            className={({ isActive }) => `scena-rail__item${isActive ? " scena-rail__item--active" : ""}`}
+          >
+            {item.icon}
+            <span>{item.label}</span>
+          </NavLink>
         ))}
-
-        <div className="rail-foot" style={{ marginTop: 24 }}>
-          <button className="nav-btn" onClick={() => signOut()}>
-            Sign out
-          </button>
-        </div>
+        <div className="scena-rail__spacer" />
       </nav>
 
-      <main className="main" style={{ flex: 1, padding: 16 }}>
-        <header
-          data-workspace-id={context.workspace.id}
-          style={{ marginBottom: 16 }}
-        >
-          Workspace <b>{context.workspace.name}</b> · {context.workspace.type} ·{" "}
-          {context.role}
-          {context.workspaces.length > 1 && (
-            <span> · {context.workspaces.length} available Workspaces</span>
-          )}
-          {locations.length > 0 && (
-            <span>
-              {" "}
-              · {locations.length} location{locations.length === 1 ? "" : "s"}
-            </span>
-          )}
+      <div className="scena-shell__body">
+        <header className="scena-topbar">
+          <WorkspaceSwitcher context={context} />
+          <div className="scena-topbar__spacer" />
+          <AccountMenu context={context} />
         </header>
-        <Outlet />
-      </main>
+        <main className="scena-shell__content">
+          <Outlet />
+        </main>
+      </div>
     </div>
   );
 }

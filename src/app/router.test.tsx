@@ -14,6 +14,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import { routeTree } from "./router";
 import { convertLegacyKioskHash } from "./legacyKioskRedirect";
+import { ToastProvider } from "../components/ui/Toast";
 
 // ---- shared mocks ----------------------------------------------------
 
@@ -36,14 +37,53 @@ vi.mock("../auth/organization-context", async (importActual) => {
   return { ...actual, loadAccountContext: () => mockLoadAccountContext() };
 });
 
-vi.mock("../domain/locations", () => ({ listLocations: vi.fn().mockResolvedValue([]) }));
-vi.mock("../domain/menus", () => ({ listMenus: vi.fn().mockResolvedValue([]), createMenu: vi.fn() }));
-vi.mock("../domain/scenes", () => ({ listScenes: vi.fn().mockResolvedValue([]), createMenuScene: vi.fn() }));
+// Lets one test force a synchronous render-time throw from inside the
+// guarded subtree (AppShellRoute and every nested page read context via
+// this hook) without depending on a page-specific domain call, since which
+// domain calls a given page happens to make is an implementation detail.
+let forceManagerContextThrow = false;
+vi.mock("./ManagerContextProvider", async (importActual) => {
+  const actual = await importActual<typeof import("./ManagerContextProvider")>();
+  return {
+    ...actual,
+    useManagerContext: () => {
+      if (forceManagerContextThrow) throw new Error("simulated render-time failure");
+      return actual.useManagerContext();
+    },
+  };
+});
+
+vi.mock("../domain/locations", () => ({ listLocations: vi.fn().mockResolvedValue([]), createLocation: vi.fn() }));
 vi.mock("../domain/layouts", () => ({ listLayouts: vi.fn().mockResolvedValue([]), createLayout: vi.fn() }));
-vi.mock("../domain/screens", () => ({ listScreens: vi.fn().mockResolvedValue([]) }));
-vi.mock("../domain/sessions", () => ({ listSessions: vi.fn().mockResolvedValue([]), createDraftSession: vi.fn(), startSession: vi.fn(), stopSession: vi.fn() }));
+vi.mock("../domain/screens", () => ({
+  listScreens: vi.fn().mockResolvedValue([]),
+  listAvailableScreens: vi.fn().mockResolvedValue([]),
+  getScreen: vi.fn().mockResolvedValue(null),
+}));
+vi.mock("../domain/sessions", () => ({
+  listSessions: vi.fn().mockResolvedValue([]),
+  getSession: vi.fn().mockResolvedValue(null),
+  createDraftSession: vi.fn(),
+  startSession: vi.fn(),
+  stopSession: vi.fn(),
+}));
 vi.mock("../domain/automations", () => ({ listAutomations: vi.fn().mockResolvedValue([]) }));
-vi.mock("../domain/organizations", () => ({ getEntitlement: vi.fn().mockResolvedValue(null) }));
+vi.mock("../domain/organizations", () => ({
+  getEntitlement: vi.fn().mockResolvedValue(null),
+  listMembers: vi.fn().mockResolvedValue([]),
+  upsertMember: vi.fn(),
+  removeMember: vi.fn(),
+}));
+vi.mock("../domain/dashboard", () => ({
+  getDashboardSummary: vi.fn().mockResolvedValue({ board_count: 0, asset_count: 0, display_count: 0, displays_online: 0, plan: null }),
+}));
+vi.mock("../services/scena-api/boards", () => ({
+  listBoards: vi.fn().mockResolvedValue({ boards: [], request_id: "req-test" }),
+  archiveBoard: vi.fn(),
+}));
+vi.mock("../services/scena-api/assets", () => ({
+  listAssets: vi.fn().mockResolvedValue({ assets: [], request_id: "req-test" }),
+}));
 
 const mockStoredToken = vi.fn();
 const mockRegisterDevice = vi.fn();
@@ -63,14 +103,21 @@ const AUTHENTICATED_ACCOUNT = {
   team: { id: "org-1", name: "Acme", slug: "acme", status: "active" as const, role: "owner" as const },
 };
 
+// Mirrors main.tsx, which mounts RouterProvider inside ToastProvider —
+// pages may call useToast() during render.
 function renderAt(initialPath: string) {
   const router = createMemoryRouter(routeTree, { initialEntries: [initialPath] });
-  render(<RouterProvider router={router} />);
+  render(
+    <ToastProvider>
+      <RouterProvider router={router} />
+    </ToastProvider>,
+  );
   return router;
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
+  forceManagerContextThrow = false;
   mockGetSession.mockResolvedValue({ data: { session: null } });
   mockStoredToken.mockReturnValue(null);
   mockRegisterDevice.mockResolvedValue({ code: "123456", expires_in: 1800 });
@@ -93,7 +140,7 @@ describe("ManagerGuard", () => {
     mockGetSession.mockResolvedValue({ data: { session: { access_token: "t" } } });
     mockLoadAccountContext.mockResolvedValue(AUTHENTICATED_ACCOUNT);
     renderAt("/app/home");
-    await waitFor(() => expect(screen.getByText(/Signed in to/)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/What will you build today/)).toBeInTheDocument());
   });
 });
 
@@ -105,20 +152,20 @@ describe("direct navigation to nested manager routes", () => {
     mockLoadAccountContext.mockResolvedValue(AUTHENTICATED_ACCOUNT);
   });
 
-  it("renders /app/menus directly, without visiting /app/home first", async () => {
-    renderAt("/app/menus");
-    await waitFor(() => expect(screen.getByRole("heading", { name: "Menus" })).toBeInTheDocument());
+  it("renders /app/locations directly, without visiting /app/home first", async () => {
+    renderAt("/app/locations");
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Locations" })).toBeInTheDocument());
   });
 
-  it("renders a placeholder route directly (/app/members)", async () => {
-    renderAt("/app/members");
-    await waitFor(() => expect(screen.getByRole("heading", { name: "Members" })).toBeInTheDocument());
+  it("renders the one remaining placeholder route directly (/app/settings/organization)", async () => {
+    renderAt("/app/settings/organization");
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Organization settings" })).toBeInTheDocument());
     expect(screen.getByText(/not implemented yet/)).toBeInTheDocument();
   });
 
-  it("renders a deep parameterized placeholder route directly, refresh-safe (/app/sessions/:id/live)", async () => {
-    renderAt("/app/sessions/session-abc-123/live");
-    await waitFor(() => expect(screen.getByRole("heading", { name: "Live session" })).toBeInTheDocument());
+  it("renders a deep parameterized route directly, refresh-safe (/app/screens/:screenId)", async () => {
+    renderAt("/app/screens/screen-abc-123");
+    await waitFor(() => expect(screen.getByText("Display not found")).toBeInTheDocument());
   });
 });
 
@@ -205,8 +252,7 @@ describe("route error boundaries", () => {
     // A throw during the *initial* render (not a subsequent navigation)
     // is caught by the route's errorElement without touching the data
     // router's navigate()/Request-construction path.
-    const { listLocations } = await import("../domain/locations");
-    vi.mocked(listLocations).mockImplementation(() => { throw new Error("simulated render-time failure"); });
+    forceManagerContextThrow = true;
     renderAt("/app/home");
     await waitFor(() => expect(screen.getByText("Application error")).toBeInTheDocument());
   });

@@ -1,0 +1,42 @@
+/* Application shell — primary icon rail + top utility bar + content. */
+.scena-shell { display: flex; min-height: 100vh; background: var(--scena-bg); }
+
+.scena-rail {
+  width: var(--scena-rail-width); flex-shrink: 0; display: flex; flex-direction: column;
+  align-items: center; gap: var(--scena-space-2); padding: var(--scena-space-4) var(--scena-space-2);
+  background: var(--scena-bg-soft); border-right: 1px solid var(--scena-border-subtle);
+}
+.scena-rail__logo {
+  display: grid; place-items: center; width: 40px; height: 40px; border-radius: var(--scena-radius-md);
+  background: var(--scena-gradient-violet); color: #fff; font-family: var(--scena-font-display); font-weight: 700;
+  margin-bottom: var(--scena-space-4);
+}
+.scena-rail__item {
+  display: flex; flex-direction: column; align-items: center; gap: 4px; width: 100%;
+  padding: var(--scena-space-2) 4px; border-radius: var(--scena-radius-md); color: var(--scena-text-muted);
+  font-size: 10.5px; font-weight: 600; transition: background var(--scena-duration-normal), color var(--scena-duration-normal);
+}
+.scena-rail__item:hover { color: var(--scena-text-primary); background: var(--scena-surface-hover); }
+.scena-rail__item--active {
+  color: var(--scena-text-primary); background: rgba(91, 124, 250, 0.16);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+.scena-rail__spacer { flex: 1; }
+
+.scena-shell__body { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.scena-topbar {
+  height: var(--scena-topbar-height); flex-shrink: 0; display: flex; align-items: center; gap: var(--scena-space-4);
+  padding: 0 var(--scena-space-6); border-bottom: 1px solid var(--scena-border-subtle);
+}
+.scena-topbar__spacer { flex: 1; }
+.scena-shell__content { flex: 1; overflow-y: auto; }
+
+@media (max-width: 900px) {
+  .scena-rail { position: fixed; bottom: 0; left: 0; right: 0; top: auto; width: 100%; height: 64px;
+    flex-direction: row; justify-content: space-around; padding: 0 var(--scena-space-2); z-index: 50;
+    border-right: none; border-top: 1px solid var(--scena-border-subtle); }
+  .scena-rail__logo { display: none; }
+  .scena-rail__spacer { display: none; }
+  .scena-shell__body { padding-bottom: 64px; }
+  .scena-rail__item span:last-child { display: none; }
+}

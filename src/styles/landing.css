@@ -1,0 +1,148 @@
+/* Public landing page — near-black background, floating glass nav, violet/
+   indigo/cyan gradients, original Scena composition. */
+.scena-landing { background: var(--scena-bg); min-height: 100vh; overflow-x: hidden; }
+
+.scena-landing__nav-wrap { position: sticky; top: var(--scena-space-4); z-index: 40; padding: 0 var(--scena-space-4); display: flex; justify-content: center; }
+.scena-landing__nav {
+  width: min(1100px, 100%); display: flex; align-items: center; gap: var(--scena-space-6);
+  padding: var(--scena-space-2) var(--scena-space-3) var(--scena-space-2) var(--scena-space-5);
+  border-radius: var(--scena-radius-pill);
+}
+.scena-landing__logo { display: flex; align-items: center; gap: 8px; font-family: var(--scena-font-display); font-weight: 700; font-size: var(--scena-text-lg); }
+.scena-landing__logo-mark { display: grid; place-items: center; width: 28px; height: 28px; border-radius: var(--scena-radius-sm); background: var(--scena-gradient-violet); }
+.scena-landing__nav-links { display: flex; align-items: center; gap: var(--scena-space-5); flex: 1; }
+.scena-landing__nav-links a { font-size: var(--scena-text-sm); color: var(--scena-text-secondary); font-weight: 600; }
+.scena-landing__nav-links a:hover { color: var(--scena-text-primary); }
+.scena-landing__nav-actions { display: flex; align-items: center; gap: var(--scena-space-2); }
+
+.scena-hero {
+  position: relative; text-align: center; padding: var(--scena-space-24) var(--scena-space-6) var(--scena-space-16);
+  max-width: 900px; margin: 0 auto;
+}
+.scena-hero::before {
+  content: ""; position: absolute; top: -120px; left: 50%; transform: translateX(-50%);
+  width: 900px; height: 500px; background: var(--scena-gradient-surface); filter: blur(60px); z-index: -1;
+}
+.scena-pill {
+  display: inline-flex; align-items: center; gap: 8px; padding: 6px 16px; border-radius: var(--scena-radius-pill);
+  font-size: var(--scena-text-xs); font-weight: 600; color: var(--scena-text-secondary); margin-bottom: var(--scena-space-6);
+}
+.scena-hero h1 {
+  font-size: clamp(2.25rem, 6vw, var(--scena-text-5xl)); line-height: 1.05; letter-spacing: -0.02em;
+  background: linear-gradient(180deg, #fff 0%, var(--scena-text-secondary) 100%);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.scena-hero p { font-size: var(--scena-text-lg); color: var(--scena-text-secondary); margin: var(--scena-space-5) auto 0; max-width: 640px; line-height: 1.6; }
+.scena-hero__actions { display: flex; justify-content: center; gap: var(--scena-space-3); margin-top: var(--scena-space-8); flex-wrap: wrap; }
+
+/* Hero editor demo — the REAL Board editor embedded in a product-window
+   frame. Reuses scena-editor__* classes from editor.css; rules here only
+   size and scale that layout for the hero. The wrapper breaks out of the
+   900px hero column (centered, capped at viewport width) without ever
+   introducing horizontal page scroll. */
+.scena-hero-demo {
+  position: relative; margin: var(--scena-space-16) 0 0 50%; transform: translateX(-50%);
+  width: min(1080px, calc(100vw - var(--scena-space-8))); text-align: left;
+}
+.scena-hero-demo__frame { border-radius: var(--scena-radius-xl); padding: var(--scena-space-3); box-shadow: var(--scena-shadow-lg); }
+.scena-hero-demo__bar { display: flex; align-items: center; gap: 6px; margin: 2px 4px var(--scena-space-3); }
+.scena-hero-demo__bar > span:not(.scena-hero-demo__bar-title) { width: 8px; height: 8px; border-radius: 50%; background: var(--scena-surface-3); }
+.scena-hero-demo__bar-title { margin-left: var(--scena-space-2); font-size: var(--scena-text-xs); color: var(--scena-text-muted); }
+
+.scena-hero-demo__editor {
+  display: flex; flex-direction: column; height: 480px; border-radius: var(--scena-radius-md);
+  overflow: hidden; border: 1px solid var(--scena-border); background: var(--scena-bg);
+}
+.scena-hero-demo__canvas-area { flex: 1; min-width: 0; min-height: 0; display: flex; }
+.scena-hero-demo .scena-editor__canvas-wrap { padding: var(--scena-space-4); overflow: hidden; }
+.scena-hero-demo .scena-editor__properties { width: 260px; }
+.scena-hero-demo .scena-editor__name-input { min-width: 0; flex-shrink: 1; }
+.scena-hero-demo__dims { font-size: var(--scena-text-xs); color: var(--scena-text-muted); white-space: nowrap; }
+.scena-hero-demo__add { display: flex; align-items: center; gap: 6px; }
+
+.scena-hero-demo__caption {
+  display: flex; justify-content: center; align-items: center; gap: var(--scena-space-3); flex-wrap: wrap;
+  margin-top: var(--scena-space-4); font-size: var(--scena-text-sm); color: var(--scena-text-secondary); text-align: center;
+}
+.scena-hero-demo__caption a { color: var(--scena-cyan); font-weight: 600; }
+.scena-hero-demo__caption a:hover { color: var(--scena-text-primary); }
+
+.scena-section { max-width: 1200px; margin: 0 auto; padding: var(--scena-space-24) var(--scena-space-6); }
+.scena-section__eyebrow { color: var(--scena-cyan); font-size: var(--scena-text-xs); font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: var(--scena-space-3); text-align: center; }
+.scena-section__title { font-size: clamp(1.75rem, 4vw, var(--scena-text-4xl)); text-align: center; letter-spacing: -0.01em; }
+.scena-section__desc { text-align: center; color: var(--scena-text-secondary); max-width: 620px; margin: var(--scena-space-4) auto 0; line-height: 1.6; }
+
+.scena-value-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: var(--scena-space-5); margin-top: var(--scena-space-12); }
+.scena-value-card { padding: var(--scena-space-6); border-radius: var(--scena-radius-lg); background: var(--scena-surface-1); border: 1px solid var(--scena-border); }
+.scena-value-card__icon { width: 44px; height: 44px; border-radius: var(--scena-radius-md); background: rgba(91,124,250,.14); color: var(--scena-violet); display: grid; place-items: center; margin-bottom: var(--scena-space-4); }
+.scena-value-card h3 { font-size: var(--scena-text-lg); margin-bottom: var(--scena-space-2); }
+.scena-value-card p { font-size: var(--scena-text-sm); color: var(--scena-text-secondary); line-height: 1.6; }
+
+.scena-stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--scena-space-4); margin-top: var(--scena-space-10); }
+.scena-stat-card { padding: var(--scena-space-6); border-radius: var(--scena-radius-lg); background: var(--scena-surface-1); border: 1px solid var(--scena-border); text-align: center; }
+.scena-stat-card__value { font-family: var(--scena-font-display); font-size: var(--scena-text-3xl); background: var(--scena-gradient-primary); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.scena-stat-card__label { font-size: var(--scena-text-sm); color: var(--scena-text-muted); margin-top: 4px; }
+
+.scena-steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: var(--scena-space-6); margin-top: var(--scena-space-12); }
+.scena-step { text-align: center; }
+.scena-step__num {
+  width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; margin: 0 auto var(--scena-space-4);
+  background: var(--scena-gradient-violet); color: #fff; font-family: var(--scena-font-display); font-weight: 700;
+}
+.scena-step h3 { font-size: var(--scena-text-base); margin-bottom: var(--scena-space-2); }
+.scena-step p { font-size: var(--scena-text-sm); color: var(--scena-text-secondary); line-height: 1.6; }
+
+.scena-pricing-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: var(--scena-space-5); margin-top: var(--scena-space-12); align-items: stretch; }
+.scena-price-card { display: flex; flex-direction: column; padding: var(--scena-space-6); border-radius: var(--scena-radius-lg); background: var(--scena-surface-1); border: 1px solid var(--scena-border); }
+.scena-price-card--featured { border-color: var(--scena-violet); background: linear-gradient(180deg, rgba(91,124,250,.10), var(--scena-surface-1) 40%); }
+.scena-price-card h3 { font-size: var(--scena-text-lg); }
+.scena-price-card__price { font-family: var(--scena-font-display); font-size: var(--scena-text-3xl); margin: var(--scena-space-3) 0; }
+.scena-price-card__price span { font-size: var(--scena-text-sm); color: var(--scena-text-muted); font-family: var(--scena-font-body); }
+.scena-price-card ul { list-style: none; margin: var(--scena-space-4) 0; display: flex; flex-direction: column; gap: 8px; flex: 1; }
+.scena-price-card li { font-size: var(--scena-text-sm); color: var(--scena-text-secondary); display: flex; gap: 8px; align-items: flex-start; }
+.scena-price-card li svg { flex-shrink: 0; margin-top: 3px; color: var(--scena-success); }
+
+.scena-final-cta {
+  max-width: 1100px; margin: 0 auto var(--scena-space-24); padding: var(--scena-space-16) var(--scena-space-8); text-align: center;
+  border-radius: var(--scena-radius-xl); background: var(--scena-gradient-violet); position: relative; overflow: hidden;
+}
+.scena-final-cta h2 { font-size: clamp(1.75rem, 4vw, var(--scena-text-4xl)); color: #fff; }
+.scena-final-cta p { color: rgba(255,255,255,.85); margin: var(--scena-space-4) auto var(--scena-space-8); max-width: 480px; }
+
+.scena-footer { border-top: 1px solid var(--scena-border-subtle); padding: var(--scena-space-16) var(--scena-space-6) var(--scena-space-8); }
+.scena-footer__grid { max-width: 1200px; margin: 0 auto; display: grid; grid-template-columns: 1.4fr repeat(4, 1fr); gap: var(--scena-space-8); }
+.scena-footer__col h4 { font-size: var(--scena-text-xs); text-transform: uppercase; letter-spacing: .08em; color: var(--scena-text-muted); margin-bottom: var(--scena-space-4); }
+.scena-footer__col ul { list-style: none; display: flex; flex-direction: column; gap: var(--scena-space-3); }
+.scena-footer__col a { font-size: var(--scena-text-sm); color: var(--scena-text-secondary); }
+.scena-footer__col a:hover { color: var(--scena-text-primary); }
+.scena-footer__bottom {
+  max-width: 1200px; margin: var(--scena-space-10) auto 0; padding-top: var(--scena-space-6); border-top: 1px solid var(--scena-border-subtle);
+  display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: var(--scena-space-3);
+  font-size: var(--scena-text-xs); color: var(--scena-text-muted);
+}
+
+@media (max-width: 900px) {
+  .scena-landing__nav-links { display: none; }
+  .scena-footer__grid { grid-template-columns: repeat(2, 1fr); }
+  /* Below 900px the properties panel folds away; canvas + toolbar + scene
+     strip stay fully interactive. */
+  .scena-hero-demo .scena-editor__properties { display: none; }
+  .scena-hero-demo__editor { height: 420px; }
+  .scena-hero-demo__dims, .scena-hero-demo__save-note { display: none; }
+}
+
+@media (max-width: 700px) {
+  .scena-hero-demo .scena-editor__zoom { display: none; }
+  .scena-hero-demo__editor { height: 360px; }
+  /* Element text is fixed-px in editor.css (14px); at small fit-zooms the
+     boxes shrink but the type doesn't, so clamp it down with the canvas. */
+  .scena-hero-demo .scena-editor__element-body { font-size: 9px; padding: 2px; }
+}
+
+@media (max-width: 560px) {
+  /* Very small screens: the demo becomes a non-interactive scaled preview
+     (the canvas still auto-fits via ResizeObserver, so nothing overflows). */
+  .scena-hero-demo__editor { height: 300px; pointer-events: none; }
+  .scena-hero-demo__add { display: none; }
+  .scena-hero-demo .scena-editor__element-body { font-size: 7px; padding: 1px; }
+}

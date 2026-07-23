@@ -1,5 +1,144 @@
 # Changelog
 
+## 2026-07-23 — v1.0.16 A new UI
+
+Full manager-portal visual and functional redesign built against the live
+v1.0.15 Board/Asset/Workspace API (`src/services/scena-api/*`).
+
+**Brand identity**: the Scena flower is now the product mark — a reusable
+`ScenaMark` SVG component (`src/components/brand/ScenaMark.tsx`) used in the
+app rail, landing nav/footer, and login card, plus an SVG favicon
+(`public/favicon.svg`) and real `<head>` metadata (title, description,
+theme-color, OpenGraph) in `index.html`. The token palette was rebranded from
+violet/indigo to the flower-blue ramp (`--scena-brand: #5b7cfa` on navy-tinted
+dark surfaces); the legacy `--scena-violet`/`--scena-indigo`/`--scena-cyan`
+variable names remain as the consumed API and now resolve to the blue ramp.
+
+**Design system**: new token system (`src/styles/tokens.css`),
+self-hosted variable fonts (`@fontsource-variable/{bricolage-grotesque,
+instrument-sans,jetbrains-mono}`, replacing the Google Fonts CDN link),
+`@phosphor-icons/react` iconography, and ~30 reusable UI primitives
+(Button, Modal, Drawer, DataTable, Toast, DropdownMenu, UploadDropzone, etc.)
+in `src/components/ui/`, verified in an internal showcase at `/dev/components`
+(not linked from production nav). The old gold/dark kiosk theme is kept
+verbatim in `src/styles/legacy.css` for the kiosk (`/display`) only — the
+"marquee" naming (the product's pre-Scena name) was scrubbed from it — and
+computed-style checks confirmed neither theme bleeds into the other.
+
+**Kiosk rebrand**: the `/display` kiosk dropped the old gold theme for the
+Scena brand — navy scene, flower-mark + gradient wordmark lockup, glowing
+blue pairing code (readable from meters away, `clamp` up to 4K), pulsing
+standby dot, brand-glass diagnostics overlay. All kiosk logic and polled
+behavior untouched; kiosk isolation (no `src/auth/*`/`src/app/*` imports)
+preserved.
+
+**Board editor rebuilt as a professional editor surface**: the single-toolbar
+layout became a full editor shell — top bar (home, inline Board name,
+undo/redo, save state, dimensions, Revisions, Save), a left icon rail with a
+slide-out panel drawer (Elements grid, Text presets, Uploads, Templates,
+Brand), the properties panel, and a bottom bar with zoom slider, a Scenes
+strip toggle, and fullscreen. Templates and Brand are premium-gated with a
+crown badge and an honest upsell linking to `/app/billing` — no fabricated
+template or brand content. The chrome lives in presentational components
+(`src/components/editor/{EditorShell,EditorPanels}.tsx`) that take all data
+via props, so it also mounts with in-memory demo state at the internal
+`/dev/editor` QA route. `useBoardEditor`, keyboard nudge/delete, save,
+version-conflict recovery, and revisions are unchanged; the superseded
+`EditorToolbar`/`ElementsPanel` were removed and the Asset fetch moved into
+`BoardEditorPage`.
+
+**Interactive hero editor demo**: the landing hero's static mock window was
+replaced by the REAL Board editor embedded with in-memory state
+(`src/pages/landing/HeroEditorDemo.tsx`) — the actual `EditorCanvas`,
+`PropertiesPanel`, and `SceneStrip` components with drag/resize/select/edit/
+undo/redo and scene switching, no network calls, framed as a product window
+with a "this is the real editor" caption.
+
+**Playful system states**: new `src/styles/states.css` grain-noise +
+drifting-petal treatment for the 404 page (bobbing gradient "404"),
+`RouteErrorBoundary`, and placeholder pages; all motion disabled under
+`prefers-reduced-motion`. `LocationsPage` was rebuilt from the old
+raw-JSON panel onto the new system (table, create/rename/deactivate
+modals via `src/domain/locations.ts`) and Locations joined the rail.
+
+**Public site & auth**: new `LandingPage` at `/` (hero, value props, real
+capability stats, pricing from the SOP's published plan figures, FAQ, final
+CTA, footer) replacing the old immediate-redirect `RootRoute` (deleted, along
+with the already-dead `TeamRequiredPage`, superseded by v1.0.15's Personal
+Workspace auto-provisioning). Login/Callback/Unauthorized pages re-skinned;
+auth logic (PKCE, Google/email sign-in) untouched.
+
+**App shell**: `AppShellRoute` rebuilt with an icon rail (Home, Boards,
+Assets, Displays, Sessions, Automations, Members, Billing, Settings, More),
+a real multi-Workspace switcher and account menu (both backed by the live
+`workspace-context` API), replacing the old flat nav list.
+
+**Home, Assets, Boards**: `HomePage` now shows real recent Boards/Assets,
+Display online-count, and plan limits (previously a static welcome message).
+New `AssetsPage`/`AssetDetailPage` (upload → process → ready pipeline, status
+filters, signed previews) and `BoardsPage`/`NewBoardPage` (library, canvas-size
+presets, archive), all against `src/services/scena-api/{boards,assets}.ts`.
+
+**Board editor**: new full-viewport editor at `/app/boards/:boardId` — canvas
+with drag/resize/rotate/z-order/keyboard nudge, Elements/Assets side panel,
+properties panel, scene strip, undo/redo, and a real save flow using
+`base_version` optimistic concurrency with an explicit `BOARD_VERSION_CONFLICT`
+recovery dialog (reload latest, or save the draft into a new Board — there is
+no in-place overwrite path). No Publish control (`SCENA_UI_API_CAPABILITIES.
+boards.publish` is `false`). Revision creation/listing; no restore, since no
+restore API exists. Covered by a dedicated unit-test suite for the
+load/undo-redo/save/conflict/save-as-copy state machine.
+
+**Displays, Sessions, Automations, Members, Billing, Settings**: existing
+functional pages re-skinned onto the new system, logic unchanged. New
+`MembersPage` (role change/remove via `organizations.ts`; no invite-by-email
+UI, since no such API exists yet) and `BillingPage` (Stripe portal link,
+new-paid-Workspace checkout — there is no in-place plan-upgrade API).
+`organizations.ts#listMembers`/`upsertMember` now also select `status`
+(column already existed, wasn't being read).
+
+**Legacy content system removed**: the pre-Board Menus/Scenes/Layouts/
+Presentations pages, their routes, the "More" index page, and the orphaned
+`src/domain/{menus,scenes}.ts` modules and legacy `src/domain/assets.ts`
+presentation path are deleted (data and Edge Functions untouched — this
+removes manager UI only). Locations, which Displays and Sessions still
+depend on, moved into the primary rail.
+
+**Display, Session, and Automation management**: new `ScreenDetailPage`
+(`/app/screens/:screenId` — rename, reassign location, revoke, via
+`src/domain/screens.ts` incl. a new `getScreen`), new `SessionDetailPage`
+(`/app/sessions/:sessionId` — rename, start/stop, delete draft, display
+mode, add/remove/toggle/set-primary screens, via `src/domain/sessions.ts`),
+and `AutomationsPage` gained inline create/rename/enable/disable modals
+built from the real `AutomationInput` shape (`src/domain/automations.ts`).
+The Displays and Sessions list rows now link to their detail pages. With
+these, every reachable manager route is functional against real services
+except `/app/settings/organization` (no organization-update API exists).
+
+**Performance**: route-level code-splitting (`React.lazy`/`Suspense`) for the
+landing page, the Board editor, and the dev showcase — cut the main bundle
+from 735 KB to 608 KB gzipped-175 KB; it
+still exceeds Vite's 500 KB chunk-size warning and would benefit from further
+splitting (e.g. per-icon imports) as follow-up work.
+
+**Bugs found and fixed during verification** (live browser testing, not just
+type-checks): `Modal`/`Drawer` depended on an inline `onClose` callback
+identity in their focus-trap effect, which re-ran on unrelated parent
+re-renders and corrupted which element focus returned to on close — fixed by
+reading the latest `onClose` through a ref instead of the effect's dependency
+array. A `DropdownMenu` trigger wrapper rendered `<button><button/></button>`
+(invalid HTML) — changed the wrapper to a `<span>`.
+
+**Known gaps**: full signed-in verification (Workspace switching, Asset
+upload, Board save/conflict) could not be exercised end-to-end in this
+session's sandboxed browser, which has no real Google OAuth credentials —
+verified instead via the type-checked, mocked-data test suite plus the
+`useBoardEditor` unit tests. `/app/settings/organization` remains an honest
+placeholder (no organization-update API exists). CI's Deno-check workaround
+(mirroring `supabase/functions` outside the npm workspace) was re-run
+manually and all 15 Edge Functions pass — no Edge Function source was
+touched this session.
+
 ## 2026-07-23 — v1.0.15 UI API readiness
 
 Added the production `workspace-context` Edge Function for multi-Workspace

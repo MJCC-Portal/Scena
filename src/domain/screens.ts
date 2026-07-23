@@ -21,6 +21,15 @@ export async function listScreens(orgId: string, locationId?: string): Promise<S
   return (data ?? []) as unknown as Screen[];
 }
 
+export async function getScreen(orgId: string, screenId: string): Promise<Screen | null> {
+  requireUuid(orgId, "org_id");
+  requireUuid(screenId, "screen_id");
+  const supabase = requireSupabase();
+  const { data, error } = await supabase.from("screens").select(SAFE_COLUMNS).eq("org_id", orgId).eq("id", screenId).maybeSingle();
+  if (error) throw mapPostgresError(error);
+  return data as unknown as Screen | null;
+}
+
 /** Screens available to add to a new session — paired, not revoked. */
 export async function listAvailableScreens(orgId: string, locationId: string): Promise<Screen[]> {
   requireUuid(orgId, "org_id");

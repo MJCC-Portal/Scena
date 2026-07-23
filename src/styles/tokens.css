@@ -1,0 +1,131 @@
+/* Scena Unified UI System Contract — design tokens.
+   Every component consumes these variables. No hard-coded colors elsewhere.
+
+   Brand: Scena flower blue (#5b7cfa) on deep navy. The legacy variable names
+   --scena-violet/--scena-indigo/--scena-cyan are kept as the consumed API of
+   this file (every component references them) but they now resolve to the
+   Scena blue brand ramp — --scena-brand is the canonical alias. */
+:root {
+  /* Backgrounds */
+  --scena-bg: #070910;
+  --scena-bg-soft: #0a0d16;
+  --scena-bg-elevated: #0e1220;
+
+  /* Solid surfaces */
+  --scena-surface-1: #111627;
+  --scena-surface-2: #161c31;
+  --scena-surface-3: #1c2440;
+  --scena-surface-hover: #232c4e;
+  --scena-surface-active: #2a3560;
+
+  /* Liquid glass */
+  --scena-glass-soft: rgba(18, 23, 42, 0.68);
+  --scena-glass-medium: rgba(23, 29, 52, 0.78);
+  --scena-glass-strong: rgba(30, 38, 68, 0.88);
+  --scena-glass-highlight: rgba(255, 255, 255, 0.06);
+
+  /* Borders */
+  --scena-border-subtle: rgba(181, 198, 253, 0.10);
+  --scena-border: rgba(181, 198, 253, 0.18);
+  --scena-border-strong: rgba(181, 198, 253, 0.30);
+  --scena-border-focus: rgba(91, 124, 250, 0.75);
+
+  /* Text */
+  --scena-text-primary: #f5f7ff;
+  --scena-text-secondary: #c0c9e6;
+  --scena-text-muted: #8a94b8;
+  --scena-text-disabled: #5d6480;
+  --scena-text-inverse: #070910;
+
+  /* Brand */
+  --scena-brand: #5b7cfa;
+  --scena-brand-strong: #3d5ff0;
+  --scena-navy: #131b3d;
+  --scena-violet: #5b7cfa;
+  --scena-violet-strong: #3d5ff0;
+  --scena-indigo: #4a6cf5;
+  --scena-indigo-strong: #3554e8;
+  --scena-cyan: #7eb3ff;
+  --scena-cyan-soft: #a8cbff;
+
+  /* Semantic */
+  --scena-success: #34d399;
+  --scena-success-bg: rgba(52, 211, 153, 0.14);
+  --scena-warning: #fbbf24;
+  --scena-warning-bg: rgba(251, 191, 36, 0.14);
+  --scena-danger: #fb7185;
+  --scena-danger-bg: rgba(251, 113, 133, 0.14);
+  --scena-info: #60a5fa;
+  --scena-info-bg: rgba(96, 165, 250, 0.14);
+
+  /* Gradients */
+  --scena-gradient-primary: linear-gradient(135deg, #7eb3ff 0%, #5b7cfa 45%, #3d5ff0 100%);
+  --scena-gradient-violet: linear-gradient(135deg, #3554e8 0%, #4a6cf5 55%, #7c9aff 100%);
+  --scena-gradient-surface: linear-gradient(145deg, rgba(126, 179, 255, 0.08), rgba(91, 124, 250, 0.08) 45%, rgba(61, 95, 240, 0.12));
+
+  /* Shadows */
+  --scena-shadow-sm: 0 4px 14px rgba(0, 0, 0, 0.28);
+  --scena-shadow-md: 0 12px 34px rgba(0, 0, 0, 0.36);
+  --scena-shadow-lg: 0 24px 70px rgba(0, 0, 0, 0.48);
+  --scena-shadow-glow: 0 0 0 1px rgba(91, 124, 250, 0.20), 0 14px 45px rgba(74, 108, 245, 0.16);
+
+  /* Blur */
+  --scena-blur-soft: blur(12px);
+  --scena-blur-medium: blur(20px);
+  --scena-blur-strong: blur(30px);
+
+  /* Radius */
+  --scena-radius-xs: 6px;
+  --scena-radius-sm: 9px;
+  --scena-radius-md: 13px;
+  --scena-radius-lg: 18px;
+  --scena-radius-xl: 24px;
+  --scena-radius-pill: 999px;
+
+  /* Spacing */
+  --scena-space-1: 4px;
+  --scena-space-2: 8px;
+  --scena-space-3: 12px;
+  --scena-space-4: 16px;
+  --scena-space-5: 20px;
+  --scena-space-6: 24px;
+  --scena-space-8: 32px;
+  --scena-space-10: 40px;
+  --scena-space-12: 48px;
+  --scena-space-16: 64px;
+  --scena-space-20: 80px;
+  --scena-space-24: 96px;
+
+  /* App dimensions */
+  --scena-rail-width: 72px;
+  --scena-sidebar-width: 264px;
+  --scena-topbar-height: 64px;
+  --scena-editor-toolbar-height: 56px;
+  --scena-editor-scene-strip-height: 104px;
+
+  /* Motion */
+  --scena-duration-fast: 120ms;
+  --scena-duration-normal: 180ms;
+  --scena-duration-slow: 280ms;
+  --scena-ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --scena-ease-emphasized: cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  /* Focus */
+  --scena-focus-ring: 0 0 0 2px var(--scena-bg), 0 0 0 4px var(--scena-brand);
+
+  /* Typography families */
+  --scena-font-display: "Bricolage Grotesque Variable", "Arial", sans-serif;
+  --scena-font-body: "Instrument Sans Variable", "Inter", "Segoe UI", sans-serif;
+  --scena-font-mono: "JetBrains Mono Variable", "Consolas", monospace;
+
+  /* Type scale */
+  --scena-text-xs: 0.75rem;
+  --scena-text-sm: 0.875rem;
+  --scena-text-base: 1rem;
+  --scena-text-lg: 1.125rem;
+  --scena-text-xl: 1.25rem;
+  --scena-text-2xl: 1.5rem;
+  --scena-text-3xl: 2rem;
+  --scena-text-4xl: 2.75rem;
+  --scena-text-5xl: clamp(3rem, 6vw, 5rem);
+}

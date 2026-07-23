@@ -1,0 +1,149 @@
+/* Kiosk-only stylesheet — styles the /display route (DisplayRoute +
+   DisplayErrorBoundary): pairing screen, standby, live layout canvas,
+   reconnecting banner, and the diagnostics overlay. Themed with the Scena
+   design tokens (src/styles/tokens.css, imported before this file in
+   src/styles.css) so the kiosk shares the manager portal's brand — deep
+   navy, flower-blue accent, Bricolage/Instrument/JetBrains type.
+
+   A small "shared legacy classes" section at the bottom keeps the few
+   class names still consumed outside the kiosk (.auth-shell/.auth-card/
+   .loading-card/.spinner in src/app/ManagerGuard.tsx) fully styled until
+   that caller migrates to `.scena-*` components. All `.scena-*` rules
+   always win over anything here, so nothing bleeds into the design
+   system. */
+
+/* ── Kiosk root ─────────────────────── */
+.display-root{
+  position:fixed;inset:0;overflow:hidden;
+  display:flex;align-items:stretch;
+  background:
+    radial-gradient(140vmax 90vmax at 50% 118%, rgba(61,95,240,.14) 0, transparent 55%),
+    radial-gradient(90vmax 70vmax at 12% -12%, rgba(126,179,255,.07) 0, transparent 60%),
+    var(--scena-bg);
+  color:var(--scena-text-primary);
+  font-family:var(--scena-font-body);
+}
+.display-center{
+  flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:clamp(14px,2.2vh,26px);text-align:center;padding:24px;
+}
+
+/* ── Brand lockup (flower mark + wordmark) ── */
+.display-brand{
+  display:flex;align-items:center;justify-content:center;
+  gap:clamp(10px,1.2vw,20px);
+}
+.display-brand__mark{
+  display:flex;color:var(--scena-brand);
+  filter:drop-shadow(0 0 18px rgba(91,124,250,.45));
+}
+.display-brand__mark svg{
+  width:clamp(28px,3.4vw,64px);height:clamp(28px,3.4vw,64px);
+}
+.display-brand__word{
+  font-family:var(--scena-font-display);font-weight:700;
+  font-size:clamp(22px,2.6vw,52px);letter-spacing:.14em;
+  padding-left:.14em; /* optically recenter the letterspaced word */
+  background:var(--scena-gradient-primary);
+  -webkit-background-clip:text;background-clip:text;
+  -webkit-text-fill-color:transparent;color:var(--scena-brand);
+}
+
+/* ── Text ranks ─────────────────────── */
+.display-dim{
+  color:var(--scena-text-secondary);
+  font-size:clamp(14px,1.3vw,24px);max-width:34em;line-height:1.55;
+}
+.display-faint{
+  color:var(--scena-text-muted);
+  font-size:clamp(11px,.9vw,17px);
+}
+
+/* Pulsing status dot on the standby / live status line */
+.display-status{display:inline-flex;align-items:center;gap:.6em}
+.status-dot{
+  width:.55em;height:.55em;border-radius:50%;flex-shrink:0;
+  background:var(--scena-success);
+  box-shadow:0 0 0 0 rgba(52,211,153,.55);
+  animation:status-pulse 2.4s var(--scena-ease-standard) infinite;
+}
+@keyframes status-pulse{
+  0%{box-shadow:0 0 0 0 rgba(52,211,153,.55)}
+  70%{box-shadow:0 0 0 .55em rgba(52,211,153,0)}
+  100%{box-shadow:0 0 0 0 rgba(52,211,153,0)}
+}
+
+/* ── Pairing code — must read from meters away on a TV ── */
+.pair-code{
+  position:relative;
+  font-family:var(--scena-font-mono);font-weight:600;
+  font-size:clamp(56px,13vw,232px);line-height:1.1;
+  letter-spacing:.24em;padding-left:.24em; /* recenter letterspaced digits */
+  color:var(--scena-text-primary);
+  text-shadow:0 0 34px rgba(91,124,250,.55),0 0 90px rgba(61,95,240,.35);
+}
+.pair-code::before{ /* soft brand glow pooled behind the code */
+  content:"";position:absolute;inset:-18% -6%;z-index:-1;border-radius:50%;
+  background:radial-gradient(closest-side, rgba(91,124,250,.22) 0, rgba(61,95,240,.10) 55%, transparent 100%);
+  filter:blur(6px);
+}
+
+/* ── Reconnecting banner ────────────── */
+.display-offline{
+  position:fixed;top:clamp(12px,1.6vh,28px);right:clamp(12px,1.6vw,28px);z-index:20;
+  display:flex;align-items:center;
+  background:var(--scena-warning-bg);
+  border:1px solid rgba(251,191,36,.55);color:var(--scena-warning);
+  border-radius:var(--scena-radius-sm);padding:6px 14px;
+  font-family:var(--scena-font-mono);font-size:clamp(11px,.85vw,16px);letter-spacing:.08em;
+  animation:soft-pulse 1.6s ease-in-out infinite;
+}
+@keyframes soft-pulse{0%,100%{opacity:1}50%{opacity:.55}}
+
+/* ── Diagnostics overlay ("press D") ── */
+.debug-hint{
+  position:fixed;bottom:10px;right:14px;z-index:20;
+  color:var(--scena-text-disabled);opacity:.55;
+  font-family:var(--scena-font-mono);font-size:10.5px;letter-spacing:.08em;
+}
+.debug-overlay{
+  position:fixed;top:14px;left:14px;z-index:30;width:min(360px,90vw);
+  background:var(--scena-glass-strong);
+  border:1px solid var(--scena-border);border-radius:var(--scena-radius-md);
+  padding:14px 16px;font-family:var(--scena-font-mono);font-size:11.5px;
+  backdrop-filter:var(--scena-blur-soft);-webkit-backdrop-filter:var(--scena-blur-soft);
+  box-shadow:var(--scena-shadow-md);
+}
+.debug-title{
+  color:var(--scena-brand);letter-spacing:.14em;font-size:10.5px;font-weight:600;margin-bottom:10px;
+}
+.debug-row{
+  display:flex;justify-content:space-between;gap:14px;padding:3px 0;
+  border-top:1px solid var(--scena-border-subtle);
+}
+.debug-row:first-of-type{border-top:none}
+.debug-row span{
+  color:var(--scena-text-muted);text-transform:uppercase;letter-spacing:.06em;
+  font-size:10px;padding-top:1px;
+}
+.debug-row b{color:var(--scena-text-primary);font-weight:500;text-align:right;word-break:break-all}
+
+/* ── Shared legacy classes (non-kiosk consumers, restyled to brand) ── */
+.auth-shell{
+  min-height:100vh;display:grid;place-items:center;padding:24px;
+  background:radial-gradient(620px circle at 18% -8%, rgba(91,124,250,.10) 0, transparent 60%), var(--scena-bg);
+}
+.auth-card{
+  width:min(100%,440px);padding:42px 38px;text-align:center;
+  border:1px solid var(--scena-border);border-radius:var(--scena-radius-lg);
+  background:var(--scena-surface-1);box-shadow:var(--scena-shadow-md);
+  animation:rise .5s var(--scena-ease-emphasized);
+}
+.loading-card{display:grid;place-items:center;gap:12px;color:var(--scena-text-secondary)}
+.spinner{
+  width:22px;height:22px;border-radius:50%;
+  border:2.5px solid var(--scena-surface-3);border-top-color:var(--scena-brand);
+  animation:spin .7s linear infinite;
+}
+@keyframes rise{from{opacity:0;transform:translateY(10px) scale(.98)}to{opacity:1;transform:none}}
+@keyframes spin{to{transform:rotate(360deg)}}

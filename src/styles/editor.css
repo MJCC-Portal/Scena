@@ -1,0 +1,191 @@
+/* Board editor — denser chrome than the rest of the app, same tokens.
+   Glass on floating/context panels; solid on tool rail, scene strip,
+   properties form, and the canvas workspace itself. */
+.scena-editor { display: flex; flex-direction: column; height: 100vh; background: var(--scena-bg); }
+
+.scena-editor__toolbar {
+  height: var(--scena-editor-toolbar-height); flex-shrink: 0; display: flex; align-items: center; gap: var(--scena-space-3);
+  padding: 0 var(--scena-space-4); border-bottom: 1px solid var(--scena-border-subtle); background: var(--scena-bg-soft);
+}
+.scena-editor__name-input {
+  background: transparent; border: 1px solid transparent; border-radius: var(--scena-radius-sm);
+  font-weight: 600; font-size: var(--scena-text-sm); padding: 6px 10px; color: var(--scena-text-primary); max-width: 220px;
+}
+.scena-editor__name-input:hover, .scena-editor__name-input:focus-visible { border-color: var(--scena-border); background: var(--scena-surface-1); }
+.scena-editor__save-state { font-size: var(--scena-text-xs); color: var(--scena-text-muted); display: flex; align-items: center; gap: 6px; min-width: 90px; }
+.scena-editor__save-state--saved { color: var(--scena-success); }
+.scena-editor__save-state--failed, .scena-editor__save-state--conflict { color: var(--scena-danger); }
+.scena-editor__spacer { flex: 1; }
+.scena-editor__zoom { display: flex; align-items: center; gap: 8px; font-size: var(--scena-text-xs); color: var(--scena-text-muted); }
+
+.scena-editor__body { flex: 1; display: flex; min-height: 0; }
+
+.scena-editor__rail {
+  width: 72px; flex-shrink: 0; background: var(--scena-bg-soft); border-right: 1px solid var(--scena-border-subtle);
+  display: flex; flex-direction: column; align-items: center; gap: 4px; padding: var(--scena-space-3) var(--scena-space-2);
+}
+.scena-editor__rail-item {
+  display: flex; flex-direction: column; align-items: center; gap: 4px; width: 100%; padding: 8px 2px;
+  border-radius: var(--scena-radius-md); color: var(--scena-text-muted); font-size: 10px; font-weight: 600;
+}
+.scena-editor__rail-item:hover { color: var(--scena-text-primary); background: var(--scena-surface-hover); }
+.scena-editor__rail-item--active { color: var(--scena-text-primary); background: rgba(91,124,250,.16); }
+
+.scena-editor__context-panel {
+  width: 280px; flex-shrink: 0; border-right: 1px solid var(--scena-border-subtle); overflow-y: auto;
+  padding: var(--scena-space-4); background: var(--scena-bg-soft);
+}
+.scena-editor__context-panel h3 { font-size: var(--scena-text-sm); margin-bottom: var(--scena-space-3); }
+.scena-editor__element-option {
+  display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px; border-radius: var(--scena-radius-md);
+  border: 1px solid var(--scena-border); background: var(--scena-surface-1); font-size: var(--scena-text-sm); margin-bottom: 8px;
+  text-align: left; transition: background var(--scena-duration-normal);
+}
+.scena-editor__element-option:hover { background: var(--scena-surface-hover); }
+
+.scena-editor__canvas-wrap {
+  flex: 1; min-width: 0; overflow: auto; display: flex; align-items: center; justify-content: center;
+  background:
+    linear-gradient(45deg, var(--scena-bg-soft) 25%, transparent 25%),
+    linear-gradient(-45deg, var(--scena-bg-soft) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, var(--scena-bg-soft) 75%),
+    linear-gradient(-45deg, transparent 75%, var(--scena-bg-soft) 75%);
+  background-size: 24px 24px; background-position: 0 0, 0 12px, 12px -12px, -12px 0;
+  background-color: #0a0a0f;
+  padding: var(--scena-space-8);
+}
+.scena-editor__canvas {
+  position: relative; background: #000; box-shadow: 0 0 0 1px var(--scena-border), var(--scena-shadow-lg);
+  flex-shrink: 0; overflow: hidden;
+}
+.scena-editor__element {
+  position: absolute; cursor: move; border: 1.5px solid transparent; box-sizing: border-box;
+}
+.scena-editor__element--selected { border-color: var(--scena-violet); box-shadow: 0 0 0 1px var(--scena-violet); }
+.scena-editor__element--locked { cursor: not-allowed; }
+.scena-editor__element--hidden { opacity: 0.35; }
+.scena-editor__element-body {
+  width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; text-align: center;
+  color: #fff; overflow: hidden; user-select: none; font-size: 14px; padding: 4px;
+}
+.scena-editor__handle {
+  position: absolute; width: 10px; height: 10px; background: var(--scena-violet); border: 2px solid #fff;
+  border-radius: 50%; z-index: 5;
+}
+.scena-editor__handle--nw { top: -5px; left: -5px; cursor: nwse-resize; }
+.scena-editor__handle--ne { top: -5px; right: -5px; cursor: nesw-resize; }
+.scena-editor__handle--sw { bottom: -5px; left: -5px; cursor: nesw-resize; }
+.scena-editor__handle--se { bottom: -5px; right: -5px; cursor: nwse-resize; }
+.scena-editor__handle--rotate { top: -28px; left: 50%; transform: translateX(-50%); cursor: grab; background: var(--scena-cyan); }
+.scena-editor__snap-line { position: absolute; background: var(--scena-cyan); z-index: 4; pointer-events: none; }
+.scena-editor__snap-line--v { width: 1px; top: 0; bottom: 0; }
+.scena-editor__snap-line--h { height: 1px; left: 0; right: 0; }
+
+.scena-editor__properties {
+  width: 280px; flex-shrink: 0; border-left: 1px solid var(--scena-border-subtle); overflow-y: auto;
+  padding: var(--scena-space-4); background: var(--scena-bg-soft);
+}
+.scena-editor__prop-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: var(--scena-space-3); }
+.scena-editor__prop-group { margin-bottom: var(--scena-space-5); }
+.scena-editor__prop-group h4 { font-size: var(--scena-text-xs); text-transform: uppercase; letter-spacing: .06em; color: var(--scena-text-muted); margin-bottom: 10px; }
+
+.scena-editor__scene-strip {
+  height: var(--scena-editor-scene-strip-height); flex-shrink: 0; border-top: 1px solid var(--scena-border-subtle);
+  background: var(--scena-bg-soft); display: flex; align-items: center; gap: var(--scena-space-3); padding: 0 var(--scena-space-4);
+  overflow-x: auto;
+}
+.scena-editor__scene-thumb {
+  flex-shrink: 0; width: 96px; height: 60px; border-radius: var(--scena-radius-sm); background: var(--scena-surface-2);
+  border: 2px solid var(--scena-border); display: flex; flex-direction: column; align-items: center; justify-content: center;
+  font-size: 10px; color: var(--scena-text-muted); position: relative; cursor: pointer;
+}
+.scena-editor__scene-thumb--active { border-color: var(--scena-violet); }
+.scena-editor__scene-thumb--hidden { opacity: 0.4; }
+
+@media (max-width: 1024px) {
+  .scena-editor__context-panel, .scena-editor__properties { width: 240px; }
+}
+
+/* ------------------------------------------------------------------ */
+/* Canva-style shell (.scena-editor--shell) — top bar, icon rail with  */
+/* slide-out drawer, bottom bar. Classes above stay untouched because  */
+/* the landing HeroEditorDemo still consumes them.                     */
+/* ------------------------------------------------------------------ */
+
+.scena-editor--shell:fullscreen { background: var(--scena-bg); }
+
+.scena-editor__topbar {
+  height: var(--scena-editor-toolbar-height); flex-shrink: 0; display: flex; align-items: center; gap: var(--scena-space-3);
+  padding: 0 var(--scena-space-4); border-bottom: 1px solid var(--scena-border-subtle);
+  background: linear-gradient(90deg, rgba(91, 124, 250, 0.14), rgba(61, 95, 240, 0.05) 45%, transparent 80%), var(--scena-bg-soft);
+}
+.scena-editor__topbar-group { display: flex; align-items: center; gap: var(--scena-space-2); min-width: 0; }
+.scena-editor__topbar-dims { font-size: var(--scena-text-xs); color: var(--scena-text-muted); white-space: nowrap; }
+
+/* Rail buttons (the base .scena-editor__rail-item rules above predate the
+   shell and lack button resets — added here so <button> renders clean). */
+.scena-editor__rail-item { position: relative; border: none; background: transparent; cursor: pointer; font-family: inherit; }
+.scena-editor__rail-crown { position: absolute; top: 4px; right: 10px; color: var(--scena-warning); }
+
+.scena-editor__drawer {
+  width: 300px; flex-shrink: 0; display: flex; flex-direction: column; min-height: 0;
+  border-right: 1px solid var(--scena-border-subtle); background: var(--scena-bg-soft);
+}
+.scena-editor__drawer-header {
+  display: flex; align-items: center; justify-content: space-between; flex-shrink: 0;
+  padding: var(--scena-space-3) var(--scena-space-4); border-bottom: 1px solid var(--scena-border-subtle);
+}
+.scena-editor__drawer-header h3 { font-size: var(--scena-text-sm); margin: 0; }
+.scena-editor__drawer-body { flex: 1; overflow-y: auto; padding: var(--scena-space-4); }
+.scena-editor__drawer-section-title {
+  font-size: var(--scena-text-xs); text-transform: uppercase; letter-spacing: .06em;
+  color: var(--scena-text-muted); margin-bottom: 10px;
+}
+
+.scena-editor__element-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+.scena-editor__element-tile {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+  padding: 12px 6px; border-radius: var(--scena-radius-md); border: 1px solid var(--scena-border);
+  background: var(--scena-surface-1); color: var(--scena-text-secondary); font-size: var(--scena-text-xs);
+  font-family: inherit; cursor: pointer; transition: background var(--scena-duration-normal);
+}
+.scena-editor__element-tile:hover { background: var(--scena-surface-hover); color: var(--scena-text-primary); }
+
+.scena-editor__text-presets { display: grid; gap: 10px; }
+.scena-editor__text-preset {
+  width: 100%; text-align: left; padding: 12px 14px; border-radius: var(--scena-radius-md);
+  border: 1px solid var(--scena-border); background: var(--scena-surface-1); color: var(--scena-text-primary);
+  font-family: inherit; cursor: pointer; transition: background var(--scena-duration-normal);
+}
+.scena-editor__text-preset:hover { background: var(--scena-surface-hover); }
+.scena-editor__text-preset--heading { font-size: var(--scena-text-xl); font-weight: 700; }
+.scena-editor__text-preset--subheading { font-size: var(--scena-text-base); font-weight: 600; }
+.scena-editor__text-preset--body { font-size: var(--scena-text-sm); color: var(--scena-text-secondary); }
+
+.scena-editor__upsell { text-align: center; padding: var(--scena-space-6) var(--scena-space-3); display: grid; gap: var(--scena-space-3); justify-items: center; }
+.scena-editor__upsell-crown { color: var(--scena-warning); }
+.scena-editor__upsell h4 { font-size: var(--scena-text-base); margin: 0; }
+.scena-editor__upsell p { font-size: var(--scena-text-sm); color: var(--scena-text-muted); margin: 0; }
+
+.scena-editor__bottombar {
+  height: 44px; flex-shrink: 0; display: flex; align-items: center; gap: var(--scena-space-3);
+  padding: 0 var(--scena-space-4); border-top: 1px solid var(--scena-border-subtle); background: var(--scena-bg-soft);
+}
+.scena-editor__bottombar-scenes-label { font-size: var(--scena-text-xs); color: var(--scena-text-muted); white-space: nowrap; }
+.scena-editor__zoom-slider { width: 110px; accent-color: var(--scena-brand); cursor: pointer; }
+.scena-editor__zoom-value { min-width: 38px; text-align: right; }
+
+/* Responsive: drawer overlays instead of pushing below 1100px; the
+   properties panel hides below 900px. Scoped to --shell so the landing
+   HeroEditorDemo (which reuses base editor classes) is unaffected. */
+@media (max-width: 1100px) {
+  .scena-editor--shell .scena-editor__body { position: relative; }
+  .scena-editor--shell .scena-editor__drawer {
+    position: absolute; left: var(--scena-rail-width); top: 0; bottom: 0; z-index: 30;
+    border-right: 1px solid var(--scena-border); box-shadow: var(--scena-shadow-lg);
+  }
+}
+@media (max-width: 900px) {
+  .scena-editor--shell .scena-editor__properties { display: none; }
+  .scena-editor--shell .scena-editor__zoom-slider { display: none; }
+}

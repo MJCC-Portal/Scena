@@ -4,9 +4,17 @@
 
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { Monitor } from "@phosphor-icons/react";
 import { useManagerContext } from "../../app/ManagerContextProvider";
 import { callEdgeFunction } from "../../services/supabase/client";
 import * as Locations from "../../domain/locations";
+import { PageHeader } from "../../components/ui/PageHeader";
+import { Card } from "../../components/ui/Card";
+import { Field } from "../../components/ui/Field";
+import { Select } from "../../components/ui/Select";
+import { Input } from "../../components/ui/Input";
+import { Button } from "../../components/ui/Button";
+import { ErrorBanner } from "../../components/ui/ErrorBanner";
 
 export function PairScreenPage() {
   const context = useManagerContext();
@@ -15,34 +23,70 @@ export function PairScreenPage() {
   const [locationId, setLocationId] = useState("");
   const [code, setCode] = useState("");
   const [name, setName] = useState("");
-  const [err, setErr] = useState("");
+  const [error, setError] = useState<unknown>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    Locations.listLocations(context.organization.id).then((rows) => {
+    Locations.listLocations(context.workspace.id).then((rows) => {
       setLocations(rows);
       if (rows.length && !locationId) setLocationId(rows[0].id);
     });
-  }, [context.organization.id]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [context.workspace.id]);
 
   async function claim() {
-    setErr("");
+    setError(null);
+    setSubmitting(true);
     try {
       await callEdgeFunction("screen-claim", { code, name, location_id: locationId });
       navigate("/app/screens");
-    } catch (e) { setErr(e instanceof Error ? e.message : String(e)); }
+    } catch (err) {
+      setError(err);
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
-    <section>
-      <div className="view-head"><h1>Pair a screen</h1></div>
-      <select value={locationId} onChange={(e) => setLocationId(e.target.value)}>
-        <option value="">— select a location —</option>
-        {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
-      </select>
-      <input placeholder="6-digit code" value={code} onChange={(e) => setCode(e.target.value)} maxLength={6} />
-      <input placeholder="screen name" value={name} onChange={(e) => setName(e.target.value)} />
-      <button className="btn gold" disabled={!locationId || code.length !== 6 || !name} onClick={claim}>Claim</button>
-      {err && <div className="error">{err}</div>}
-    </section>
+    <div className="scena-page scena-container-narrow">
+      <PageHeader title="Pair a Display" description="Enter the six-digit code shown on the screen." />
+
+      <Card style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+        {error ? <ErrorBanner error={error} /> : null}
+
+        <Field label="Location">
+          <Select
+            value={locationId}
+            onChange={(event) => setLocationId(event.target.value)}
+            options={[{ value: "", label: "Select a location" }, ...locations.map((location) => ({ value: location.id, label: location.name }))]}
+          />
+        </Field>
+
+        <Field label="Pairing code" hint="The six-digit code shown on the Display.">
+          <Input
+            value={code}
+            onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 6))}
+            maxLength={6}
+            placeholder="123456"
+            style={{ fontFamily: "var(--scena-font-mono)", fontSize: "var(--scena-text-xl)", letterSpacing: "0.3em", textAlign: "center" }}
+          />
+        </Field>
+
+        <Field label="Display name">
+          <Input value={name} onChange={(event) => setName(event.target.value)} placeholder="Front Counter" />
+        </Field>
+
+        <Button
+          variant="primary"
+          block
+          icon={<Monitor size={18} />}
+          disabled={!locationId || code.length !== 6 || !name}
+          loading={submitting}
+          onClick={claim}
+        >
+          Pair Display
+        </Button>
+      </Card>
+    </div>
   );
 }
