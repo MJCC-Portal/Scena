@@ -7,7 +7,16 @@ const key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string | undefined;
 export const supabaseUrl = url;
 export const supabaseKey = key;
 
-export const supabase: SupabaseClient<Database> | null = url && key ? createClient<Database>(url, key) : null;
+export const supabase: SupabaseClient<Database> | null = url && key
+  ? createClient<Database>(url, key, {
+      auth: {
+        flowType: "pkce",
+        detectSessionInUrl: false,
+        persistSession: true,
+        autoRefreshToken: true,
+      },
+    })
+  : null;
 
 export function requireSupabase(): SupabaseClient<Database> {
   if (!supabase) throw new Error("Scena is not configured: VITE_SUPABASE_URL / VITE_SUPABASE_PUBLISHABLE_KEY are missing.");

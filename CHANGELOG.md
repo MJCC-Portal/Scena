@@ -1,5 +1,22 @@
 # Changelog
 
+## 2026-07-23 — v1.0.14 production PKCE authentication
+
+Changed Google OAuth and email-link authentication to use the PKCE code flow
+with explicit callback exchange. Production redirects now resolve to
+`https://scena.kpnsolute.com/auth/callback` unless an explicit
+`VITE_SCENA_APP_URL` override is supplied.
+
+The callback removes authorization parameters from browser history, rejects
+legacy token-bearing URL fragments, and returns safe sign-in errors to the login
+page. Added focused redirect, exchange, token-fragment, callback-success, and
+callback-error tests.
+
+**Verification**: pending GitHub CI for TypeScript compilation, unit tests, and
+the production build. Supabase Authentication URL Configuration must allow the
+production callback URL; provider secrets remain dashboard-managed and are not
+stored in the repository.
+
 ## 2026-07-22 — v1.0.13 media assets, Boards, and Proxmox worker
 
 Added the canonical Workspace media and Board foundation with private Asset
