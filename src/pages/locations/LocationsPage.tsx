@@ -128,7 +128,8 @@ export function LocationsPage() {
       ) : (
         <div className="scena-table-wrap">
           <table className="scena-table">
-            <thead><tr><th>Name</th><th>Slug</th><th>Timezone</th><th>Status</th>{manage && <th />}</tr></thead>
+            <caption className="scena-visually-hidden">Locations</caption>
+            <thead><tr><th scope="col">Name</th><th scope="col">Slug</th><th scope="col">Timezone</th><th scope="col">Status</th>{manage && <th scope="col" />}</tr></thead>
             <tbody>
               {locations.map((location) => (
                 <tr key={location.id}>

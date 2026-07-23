@@ -108,13 +108,14 @@ export function AutomationsPage() {
       ) : (
         <div className="scena-table-wrap">
           <table className="scena-table">
+            <caption className="scena-visually-hidden">Automations</caption>
             <thead>
               <tr>
-                <th>Name</th>
-                <th>Action</th>
-                <th>Schedule</th>
-                <th>Status</th>
-                {manage && <th aria-label="Actions" />}
+                <th scope="col">Name</th>
+                <th scope="col">Action</th>
+                <th scope="col">Schedule</th>
+                <th scope="col">Status</th>
+                {manage && <th scope="col" aria-label="Actions" />}
               </tr>
             </thead>
             <tbody>

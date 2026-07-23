@@ -37,6 +37,7 @@ export function HomePage() {
   const [state, setState] = useState<LoadState | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [search, setSearch] = useState("");
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -64,7 +65,7 @@ export function HomePage() {
     return () => {
       active = false;
     };
-  }, [context.workspace.id]);
+  }, [context.workspace.id, reloadKey]);
 
   const entitlements = context.workspace.entitlements;
   const filteredBoards = state?.boards.filter((board) => board.name.toLowerCase().includes(search.toLowerCase())) ?? [];
@@ -90,7 +91,7 @@ export function HomePage() {
       </div>
 
       {error ? (
-        <ErrorBanner error={error} onRetry={() => setState(null)} />
+        <ErrorBanner error={error} onRetry={() => setReloadKey((k) => k + 1)} />
       ) : !state ? (
         <div style={{ display: "grid", gap: 16 }}>
           <Skeleton height={120} />

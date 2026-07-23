@@ -9,9 +9,10 @@ import {
 } from "@phosphor-icons/react";
 import { SCENA_UI_API_CAPABILITIES } from "../../services/scena-api/capabilities";
 import type { AssetSummary } from "../../services/scena-api/assets";
-import type { ElementType } from "../../services/scena-api/boards";
+import type { ElementType, ShapeVariant } from "../../services/scena-api/boards";
 import { Skeleton } from "../ui/Skeleton";
 import { EmptyState } from "../ui/EmptyState";
+import { SHAPE_VARIANTS, SHAPE_VARIANT_ICONS, SHAPE_VARIANT_LABELS } from "./shapeVariants";
 
 /* ------------------------------------------------------------------ */
 /* Elements                                                           */
@@ -55,20 +56,41 @@ const ELEMENT_LABELS: Record<ElementType, string> = {
 
 export interface ElementsGridPanelProps {
   onAddElement: (type: ElementType) => void;
+  /** The single "Shape" tile is a sub-palette — one tile per variant,
+   * each inserting a shape preset with that variant set. */
+  onAddShape: (variant: ShapeVariant) => void;
 }
 
-export function ElementsGridPanel({ onAddElement }: ElementsGridPanelProps) {
+export function ElementsGridPanel({ onAddElement, onAddShape }: ElementsGridPanelProps) {
+  // "shape" gets its own sub-palette below instead of a single generic tile.
+  const staticTypes = SCENA_UI_API_CAPABILITIES.elements.static.filter((type) => type !== "shape");
   return (
     <div>
       <h4 className="scena-editor__drawer-section-title">Static</h4>
       <div className="scena-editor__element-grid">
-        {SCENA_UI_API_CAPABILITIES.elements.static.map((type) => (
+        {staticTypes.map((type) => (
           <button key={type} type="button" className="scena-editor__element-tile" onClick={() => onAddElement(type)}>
             {ELEMENT_ICONS[type]}
             <span>{ELEMENT_LABELS[type]}</span>
           </button>
         ))}
       </div>
+
+      <h4 className="scena-editor__drawer-section-title" style={{ marginTop: 16 }}>Shapes</h4>
+      <div className="scena-editor__element-grid" role="group" aria-label="Insert a shape">
+        {SHAPE_VARIANTS.map((variant) => (
+          <button
+            key={variant}
+            type="button"
+            className="scena-editor__element-tile"
+            onClick={() => onAddShape(variant)}
+          >
+            {SHAPE_VARIANT_ICONS[variant]}
+            <span>{SHAPE_VARIANT_LABELS[variant]}</span>
+          </button>
+        ))}
+      </div>
+
       <h4 className="scena-editor__drawer-section-title" style={{ marginTop: 16 }}>Live</h4>
       <div className="scena-editor__element-grid">
         {SCENA_UI_API_CAPABILITIES.elements.live.map((type) => (

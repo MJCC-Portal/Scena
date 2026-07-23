@@ -30,7 +30,7 @@ export function PairScreenPage() {
     Locations.listLocations(context.workspace.id).then((rows) => {
       setLocations(rows);
       if (rows.length && !locationId) setLocationId(rows[0].id);
-    });
+    }).catch(setError);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [context.workspace.id]);
 

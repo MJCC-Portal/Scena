@@ -18,6 +18,28 @@ export type ElementType =
   | "video"
   | "weather"
   | "data_text";
+export type ShapeVariant =
+  | "rectangle"
+  | "ellipse"
+  | "triangle"
+  | "diamond"
+  | "hexagon"
+  | "star"
+  | "line"
+  | "arrow";
+export const SHAPE_VARIANTS: readonly ShapeVariant[] = [
+  "rectangle",
+  "ellipse",
+  "triangle",
+  "diamond",
+  "hexagon",
+  "star",
+  "line",
+  "arrow",
+];
+
+export type BorderStyle = "solid" | "dashed" | "dotted";
+
 export type RenderMode = "static" | "live" | "interactive";
 export type TransitionType =
   | "none"
@@ -59,6 +81,63 @@ export interface SceneElement {
   asset_id: string | null;
   asset_page_id: string | null;
   config: Record<string, unknown>;
+}
+
+/** Generic border config, applicable to every element type. border_width of
+ * 0 is the explicit "no border" state — not merely a falsy default. */
+export interface ElementBorderConfig {
+  border_width: number;
+  border_color: string;
+  border_style: BorderStyle;
+}
+
+/** Shape-only config: geometry variant, fill (+opacity), corner radius,
+ * plus the generic border fields every element type also reads. */
+export interface ShapeConfig extends ElementBorderConfig {
+  variant: ShapeVariant;
+  fill: string;
+  fill_opacity: number;
+  corner_radius: number;
+}
+
+const DEFAULT_BORDER_CONFIG: ElementBorderConfig = {
+  border_width: 0,
+  border_color: "#ffffff",
+  border_style: "solid",
+};
+
+/** Normalizing reader for the generic border config keys. Backward
+ * compatible with elements saved before borders existed: a missing
+ * border_width reads as 0 (borderless), not an error. */
+export function readBorderConfig(element: { config: Record<string, unknown> | null | undefined }): ElementBorderConfig {
+  const config = (element.config ?? {}) as Record<string, unknown>;
+  const width = Number(config.border_width);
+  const style = config.border_style;
+  return {
+    border_width: Number.isFinite(width) && width >= 0 ? width : DEFAULT_BORDER_CONFIG.border_width,
+    border_color: typeof config.border_color === "string" && config.border_color ? config.border_color : DEFAULT_BORDER_CONFIG.border_color,
+    border_style: style === "dashed" || style === "dotted" || style === "solid" ? style : DEFAULT_BORDER_CONFIG.border_style,
+  };
+}
+
+/** Normalizing reader for shape config. A missing variant reads as
+ * "rectangle" so elements saved with config `{}` or `{ fill: "#xxx" }`
+ * (pre-variant, pre-border) keep rendering. */
+export function readShapeConfig(element: { config: Record<string, unknown> | null | undefined }): ShapeConfig {
+  const config = (element.config ?? {}) as Record<string, unknown>;
+  const variantValue = typeof config.variant === "string" ? config.variant : "rectangle";
+  const variant: ShapeVariant = (SHAPE_VARIANTS as readonly string[]).includes(variantValue)
+    ? (variantValue as ShapeVariant)
+    : "rectangle";
+  const fillOpacity = Number(config.fill_opacity);
+  const cornerRadius = Number(config.corner_radius);
+  return {
+    ...readBorderConfig(element),
+    variant,
+    fill: typeof config.fill === "string" && config.fill ? config.fill : "#5b7cfa",
+    fill_opacity: Number.isFinite(fillOpacity) ? Math.min(1, Math.max(0, fillOpacity)) : 1,
+    corner_radius: Number.isFinite(cornerRadius) && cornerRadius >= 0 ? cornerRadius : 0,
+  };
 }
 
 export interface BoardScene {

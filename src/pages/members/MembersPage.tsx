@@ -76,7 +76,8 @@ export function MembersPage() {
       ) : (
         <div className="scena-table-wrap">
           <table className="scena-table">
-            <thead><tr><th>Member</th><th>Role</th><th>Status</th><th>Joined</th>{canManageRoles && <th />}</tr></thead>
+            <caption className="scena-visually-hidden">Members</caption>
+            <thead><tr><th scope="col">Member</th><th scope="col">Role</th><th scope="col">Status</th><th scope="col">Joined</th>{canManageRoles && <th scope="col" />}</tr></thead>
             <tbody>
               {members.map((member) => (
                 <tr key={member.user_id}>

@@ -1,9 +1,18 @@
 import { Eye, EyeSlash, LockSimple, LockSimpleOpen, ArrowUp, ArrowDown, Trash } from "@phosphor-icons/react";
-import type { SceneElement } from "../../services/scena-api/boards";
+import type { SceneElement, BorderStyle } from "../../services/scena-api/boards";
+import { readBorderConfig, readShapeConfig } from "../../services/scena-api/boards";
 import { Field } from "../ui/Field";
 import { Input } from "../ui/Input";
+import { Select } from "../ui/Select";
 import { IconButton } from "../ui/Button";
 import { EmptyState } from "../ui/EmptyState";
+import { SHAPE_VARIANTS, SHAPE_VARIANT_ICONS, SHAPE_VARIANT_LABELS } from "./shapeVariants";
+
+const BORDER_STYLE_OPTIONS: { value: BorderStyle; label: string }[] = [
+  { value: "solid", label: "Solid" },
+  { value: "dashed", label: "Dashed" },
+  { value: "dotted", label: "Dotted" },
+];
 
 export interface PropertiesPanelProps {
   element: SceneElement | null;

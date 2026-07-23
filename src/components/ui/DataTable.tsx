@@ -13,16 +13,18 @@ export interface DataTableProps<T> {
   rowKey: (row: T) => string;
   selectedKey?: string;
   onRowClick?: (row: T) => void;
+  caption?: string;
 }
 
-export function DataTable<T>({ columns, rows, rowKey, selectedKey, onRowClick }: DataTableProps<T>) {
+export function DataTable<T>({ columns, rows, rowKey, selectedKey, onRowClick, caption }: DataTableProps<T>) {
   return (
     <div className="scena-table-wrap">
       <table className="scena-table">
+        {caption && <caption className="scena-visually-hidden">{caption}</caption>}
         <thead>
           <tr>
             {columns.map((column) => (
-              <th key={column.key} style={{ width: column.width }}>
+              <th key={column.key} scope="col" style={{ width: column.width }}>
                 {column.header}
               </th>
             ))}

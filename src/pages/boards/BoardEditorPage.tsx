@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useManagerContext } from "../../app/ManagerContextProvider";
 import { useBoardEditor } from "./useBoardEditor";
-import type { ElementType, SceneElement, BoardScene } from "../../services/scena-api/boards";
+import type { ElementType, SceneElement, BoardScene, ShapeVariant } from "../../services/scena-api/boards";
+import { SHAPE_VARIANT_PRESETS, SHAPE_VARIANT_SIZE } from "../../components/editor/shapeVariants";
 import { listAssets } from "../../services/scena-api/assets";
 import type { AssetSummary } from "../../services/scena-api/assets";
 import {
@@ -44,6 +45,22 @@ const DEFAULT_SIZE: Record<ElementType, { width: number; height: number }> = {
   weather: { width: 20, height: 15 },
   data_text: { width: 25, height: 8 },
 };
+
+// Insert-time default config per element type — every type must insert with
+// a renderable default, not an empty object. Shape's default (used only if
+// an element_type "shape" is ever inserted outside the variant sub-palette,
+// e.g. a future generic insert path) mirrors the variant presets in
+// shapeVariants.tsx with "rectangle" as the base variant.
+function defaultConfigFor(type: ElementType): Record<string, unknown> {
+  switch (type) {
+    case "text":
+      return { text: "Text" };
+    case "shape":
+      return { variant: "rectangle", fill: "#5b7cfa", fill_opacity: 1, border_width: 0, border_color: "#ffffff", border_style: "solid", corner_radius: 0 };
+    default:
+      return {};
+  }
+}
 
 export function BoardEditorPage() {
   const { boardId } = useParams<{ boardId: string }>();
@@ -124,7 +141,7 @@ export function BoardEditorPage() {
   const { snapshot } = editor;
   const sceneIndex = scene ? snapshot.scenes.findIndex((item) => item.id === scene.id) + 1 : 0;
 
-  function handleAddElement(type: ElementType, assetId?: string) {
+  function handleAddElement(type: ElementType, assetId?: string, configOverride?: Record<string, unknown>) {
     if (!scene) return;
     const size = DEFAULT_SIZE[type];
     const element: SceneElement = {
@@ -143,7 +160,34 @@ export function BoardEditorPage() {
       is_visible: true,
       asset_id: assetId ?? null,
       asset_page_id: null,
-      config: type === "text" ? { text: "Text" } : {},
+      config: configOverride ?? defaultConfigFor(type),
+    };
+    editor.addElement(scene.id, element);
+  }
+
+  // The Elements panel's Shape tile is a sub-palette (one button per
+  // variant), each inserting a shape with a renderable, variant-specific
+  // preset config and footprint — see components/editor/shapeVariants.tsx.
+  function handleAddShape(variant: ShapeVariant) {
+    if (!scene) return;
+    const size = SHAPE_VARIANT_SIZE[variant];
+    const element: SceneElement = {
+      id: crypto.randomUUID(),
+      element_type: "shape",
+      render_mode: "static",
+      name: null,
+      x: 50 - size.width / 2,
+      y: 50 - size.height / 2,
+      width: size.width,
+      height: size.height,
+      rotation: 0,
+      opacity: 1,
+      z_index: scene.elements.length,
+      is_locked: false,
+      is_visible: true,
+      asset_id: null,
+      asset_page_id: null,
+      config: SHAPE_VARIANT_PRESETS[variant],
     };
     editor.addElement(scene.id, element);
   }
@@ -212,7 +256,7 @@ export function BoardEditorPage() {
   }
 
   const panelContent =
-    activePanel === "elements" ? <ElementsGridPanel onAddElement={(type) => handleAddElement(type)} />
+    activePanel === "elements" ? <ElementsGridPanel onAddElement={(type) => handleAddElement(type)} onAddShape={handleAddShape} />
     : activePanel === "text" ? <TextPresetsPanel onInsertPreset={handleAddTextPreset} />
     : activePanel === "uploads" ? <UploadsPanel assets={assets} onInsertAsset={(assetId) => handleAddElement("asset_page", assetId)} />
     : activePanel === "templates" ? <PremiumUpsellPanel feature="templates" />

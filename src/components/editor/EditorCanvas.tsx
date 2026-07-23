@@ -3,7 +3,8 @@
 // value on pointer-up is committed to the editor's undo-tracked state, so a
 // whole drag gesture is one undo step, not one per pixel of movement.
 import { useRef, useState } from "react";
-import type { BoardScene, SceneElement } from "../../services/scena-api/boards";
+import type { BoardScene, SceneElement, ShapeVariant } from "../../services/scena-api/boards";
+import { readBorderConfig, readShapeConfig } from "../../services/scena-api/boards";
 
 type DragKind = "move" | "resize-nw" | "resize-ne" | "resize-sw" | "resize-se" | "rotate";
 
@@ -139,8 +140,8 @@ export function EditorCanvas({
               // deselect-on-click and instantly undo the selection.
               onClick={(event) => event.stopPropagation()}
             >
-              <div className="scena-editor__element-body" style={{ background: elementColor(element) }}>
-                {elementLabel(element)}
+              <div className="scena-editor__element-body" style={elementBodyStyle(element)}>
+                {element.element_type === "shape" ? <ShapeBody element={element} /> : elementLabel(element)}
               </div>
               {isSelected && !element.is_locked && (
                 <>
@@ -172,4 +173,92 @@ function elementColor(element: SceneElement): string {
 function elementLabel(element: SceneElement): string {
   if (element.element_type === "text") return (element.config as { text?: string })?.text ?? "Text";
   return element.name ?? element.element_type.replace(/_/g, " ");
+}
+
+// Borders are a generic element property (task: "a text or image element
+// should be able to have a border too"), honored for every element type —
+// except shape, which draws its own border as part of its SVG geometry
+// below (a plain CSS border on this box would fight with non-rectangular
+// shapes: clip-path/SVG clipping clips a CSS border clean away).
+function elementBodyStyle(element: SceneElement): React.CSSProperties {
+  if (element.element_type === "shape") return {};
+  const border = readBorderConfig(element);
+  return {
+    background: elementColor(element),
+    boxSizing: "border-box",
+    borderWidth: border.border_width,
+    borderStyle: border.border_width > 0 ? border.border_style : "none",
+    borderColor: border.border_color,
+  };
+}
+
+// Non-rectangular shape geometry (percent-space polygon points, 0-100
+// viewBox) for the variants CSS clip-path would otherwise handle — using
+// SVG for every variant (not just the clipped ones) means fill + stroke
+// stay in lockstep for all eight, including a border that actually shows
+// up on a triangle, which a clip-path border cannot do on its own.
+const SHAPE_POLYGON_POINTS: Partial<Record<ShapeVariant, string>> = {
+  triangle: "50,4 96,94 4,94",
+  diamond: "50,3 97,50 50,97 3,50",
+  hexagon: "27,4 73,4 97,50 73,96 27,96 3,50",
+  star: "50,2 61.76,33.82 95.65,35.17 69.02,56.18 78.21,88.83 50,70 21.79,88.83 30.98,56.18 4.35,35.17 38.24,33.82",
+  arrow: "0,35 60,35 60,15 100,50 60,85 60,65 0,65",
+};
+
+function ShapeBody({ element }: { element: SceneElement }) {
+  const cfg = readShapeConfig(element);
+  const isLine = cfg.variant === "line";
+  const hasBorder = cfg.border_width > 0;
+  const strokeDasharray = cfg.border_style === "dashed" ? "6 4" : cfg.border_style === "dotted" ? "1.5 3" : undefined;
+  const inset = cfg.border_width / 2;
+
+  const shapeProps = {
+    fill: isLine ? "none" : cfg.fill,
+    fillOpacity: isLine ? undefined : cfg.fill_opacity,
+    stroke: hasBorder ? cfg.border_color : "none",
+    strokeWidth: hasBorder ? cfg.border_width : 0,
+    strokeDasharray: hasBorder ? strokeDasharray : undefined,
+    strokeLinecap: isLine ? ("round" as const) : undefined,
+  };
+
+  let geometry: React.ReactElement;
+  switch (cfg.variant) {
+    case "ellipse":
+      geometry = <ellipse cx={50} cy={50} rx={Math.max(0, 50 - inset)} ry={Math.max(0, 50 - inset)} {...shapeProps} />;
+      break;
+    case "line":
+      geometry = <line x1={0} y1={50} x2={100} y2={50} {...shapeProps} />;
+      break;
+    case "triangle":
+    case "diamond":
+    case "hexagon":
+    case "star":
+    case "arrow":
+      geometry = <polygon points={SHAPE_POLYGON_POINTS[cfg.variant]} {...shapeProps} />;
+      break;
+    case "rectangle":
+    default:
+      geometry = (
+        <rect
+          x={inset}
+          y={inset}
+          width={Math.max(0, 100 - cfg.border_width)}
+          height={Math.max(0, 100 - cfg.border_width)}
+          rx={cfg.corner_radius}
+          ry={cfg.corner_radius}
+          {...shapeProps}
+        />
+      );
+  }
+
+  return (
+    <svg
+      className={`scena-editor__shape scena-editor__shape--${cfg.variant}`}
+      viewBox="0 0 100 100"
+      preserveAspectRatio="none"
+      aria-hidden="true"
+    >
+      {geometry}
+    </svg>
+  );
 }

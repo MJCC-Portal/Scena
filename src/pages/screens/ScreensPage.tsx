@@ -80,7 +80,8 @@ export function ScreensPage() {
       ) : (
         <div className="scena-table-wrap">
           <table className="scena-table">
-            <thead><tr><th>Name</th><th>Status</th><th>Last seen</th>{manage && <th />}</tr></thead>
+            <caption className="scena-visually-hidden">Displays</caption>
+            <thead><tr><th scope="col">Name</th><th scope="col">Status</th><th scope="col">Last seen</th>{manage && <th scope="col" />}</tr></thead>
             <tbody>
               {screens.map((screen) => (
                 <tr key={screen.id}>

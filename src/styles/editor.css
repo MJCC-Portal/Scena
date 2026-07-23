@@ -68,6 +68,21 @@
   width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; text-align: center;
   color: #fff; overflow: hidden; user-select: none; font-size: 14px; padding: 4px;
 }
+
+/* Shape geometry (variant A-H) renders as SVG so fill + border stay in
+   lockstep for every variant, including the clip-path-shaped ones (a CSS
+   border is clipped away by clip-path; an SVG stroke on the same path is
+   not). Per-variant classes are kept for hookability even though the
+   geometry itself comes from JS-computed attrs, not CSS. */
+.scena-editor__shape { width: 100%; height: 100%; display: block; overflow: visible; }
+.scena-editor__shape--rectangle,
+.scena-editor__shape--ellipse,
+.scena-editor__shape--triangle,
+.scena-editor__shape--diamond,
+.scena-editor__shape--hexagon,
+.scena-editor__shape--star,
+.scena-editor__shape--line,
+.scena-editor__shape--arrow { width: 100%; height: 100%; }
 .scena-editor__handle {
   position: absolute; width: 10px; height: 10px; background: var(--scena-violet); border: 2px solid #fff;
   border-radius: 50%; z-index: 5;

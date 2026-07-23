@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-07-23 — v1.0.17 Editor shapes and element styling
+
+Added shape variants (rectangle, ellipse, triangle, diamond, hexagon, star,
+line, and arrow) to the board editor, with renderable presets, borders,
+variant-aware sizing, and shared metadata for the editor and QA preview.
+Element borders now normalize backward-compatible saved configs and apply to
+supported element types. Updated board-editor defaults and the internal editor
+preview to use the new shape insertion contract.
+
 ## 2026-07-23 — v1.0.16 A new UI
 
 Full manager-portal visual and functional redesign built against the live

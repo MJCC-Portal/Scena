@@ -4,7 +4,7 @@
 // in src/pages/landing/HeroEditorDemo.tsx). No auth, no network, nothing is
 // persisted. Not linked from any production nav — reachable at /dev/editor.
 import { useRef, useState } from "react";
-import type { BoardScene, SceneElement, ElementType } from "../../services/scena-api/boards";
+import type { BoardScene, SceneElement, ElementType, ShapeVariant } from "../../services/scena-api/boards";
 import {
   EditorTopBar, EditorRail, EditorBottomBar, useEditorFullscreen,
 } from "../../components/editor/EditorShell";
@@ -16,6 +16,7 @@ import type { TextPresetSpec } from "../../components/editor/EditorPanels";
 import { EditorCanvas } from "../../components/editor/EditorCanvas";
 import { PropertiesPanel } from "../../components/editor/PropertiesPanel";
 import { SceneStrip } from "../../components/editor/SceneStrip";
+import { SHAPE_VARIANT_PRESETS, SHAPE_VARIANT_SIZE } from "../../components/editor/shapeVariants";
 import type { SaveState } from "../boards/useBoardEditor";
 
 const CANVAS_WIDTH = 1920;
@@ -183,6 +184,20 @@ export function EditorPreviewPage() {
     }));
   }
 
+  function addShape(variant: ShapeVariant) {
+    const size = SHAPE_VARIANT_SIZE[variant];
+    insertElement(demoElement({
+      id: crypto.randomUUID(),
+      element_type: "shape",
+      x: 50 - size.width / 2,
+      y: 50 - size.height / 2,
+      width: size.width,
+      height: size.height,
+      z_index: scene.elements.length,
+      config: SHAPE_VARIANT_PRESETS[variant],
+    }));
+  }
+
   function addTextPreset(preset: TextPresetSpec) {
     insertElement(demoElement({
       id: crypto.randomUUID(),
@@ -232,7 +247,7 @@ export function EditorPreviewPage() {
   }
 
   const panelContent =
-    activePanel === "elements" ? <ElementsGridPanel onAddElement={addElement} />
+    activePanel === "elements" ? <ElementsGridPanel onAddElement={addElement} onAddShape={addShape} />
     : activePanel === "text" ? <TextPresetsPanel onInsertPreset={addTextPreset} />
     // Preview never fetches: Uploads shows its empty state.
     : activePanel === "uploads" ? <UploadsPanel assets={[]} onInsertAsset={() => {}} />
