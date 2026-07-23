@@ -1,11 +1,74 @@
-// Native Supabase Auth session helpers — Google OAuth is the primary
-// sign-in path, with a one-time email link as the optional secondary path
-// (see docs/AUTHENTICATION.md). Replaces src/auth/sso.ts; there is no MJCC
-// handoff, no external identity bridge — Supabase Auth owns the session.
+// Native Supabase Auth session helpers. Google OAuth is the primary sign-in
+// path, with a one-time email link as the optional secondary path.
 
+import type { Session } from "@supabase/supabase-js";
 import { requireSupabase } from "../services/supabase/client";
 
-export async function signInWithGoogle(redirectTo = `${window.location.origin}/auth/callback`): Promise<void> {
+const CANONICAL_PRODUCTION_ORIGIN = "https://scena.kpnsolute.com";
+const AUTH_QUERY_KEYS = ["code", "error", "error_code", "error_description"];
+const LEGACY_FRAGMENT_KEYS = ["access_token", "refresh_token", "provider_token", "provider_refresh_token"];
+
+export function resolveAuthRedirect(
+  origin = window.location.origin,
+  production = import.meta.env.PROD,
+): string {
+  const configuredOrigin = (import.meta.env.VITE_SCENA_APP_URL as string | undefined)?.trim();
+  const base = production ? configuredOrigin || CANONICAL_PRODUCTION_ORIGIN : origin;
+  const parsed = new URL(base);
+
+  if (production && parsed.protocol !== "https:") {
+    throw new Error("Scena production authentication requires an HTTPS application URL.");
+  }
+
+  return new URL("/auth/callback", parsed.origin).toString();
+}
+
+function cleanAuthParameters(url: URL): void {
+  if (typeof window === "undefined") return;
+
+  const clean = new URL(url.toString());
+  for (const key of AUTH_QUERY_KEYS) clean.searchParams.delete(key);
+  clean.hash = "";
+
+  const relative = `${clean.pathname}${clean.search}` || "/";
+  window.history.replaceState(window.history.state, "", relative);
+}
+
+export async function completeAuthRedirect(
+  url = new URL(window.location.href),
+): Promise<Session | null> {
+  const client = requireSupabase();
+  const fragment = new URLSearchParams(url.hash.replace(/^#/, ""));
+  const hasLegacyTokens = LEGACY_FRAGMENT_KEYS.some((key) => fragment.has(key));
+
+  if (hasLegacyTokens) {
+    cleanAuthParameters(url);
+    throw new Error("Scena blocked a legacy token-in-URL response. Start sign-in again.");
+  }
+
+  const providerError = url.searchParams.get("error_description") ?? url.searchParams.get("error");
+  if (providerError) {
+    cleanAuthParameters(url);
+    throw new Error(providerError);
+  }
+
+  const code = url.searchParams.get("code");
+  if (code) {
+    try {
+      const { data, error } = await client.auth.exchangeCodeForSession(code);
+      if (error) throw error;
+      return data.session;
+    } finally {
+      cleanAuthParameters(url);
+    }
+  }
+
+  const { data, error } = await client.auth.getSession();
+  if (error) throw error;
+  return data.session;
+}
+
+export async function signInWithGoogle(redirectTo = resolveAuthRedirect()): Promise<void> {
   const { error } = await requireSupabase().auth.signInWithOAuth({
     provider: "google",
     options: { redirectTo },
@@ -13,7 +76,7 @@ export async function signInWithGoogle(redirectTo = `${window.location.origin}/a
   if (error) throw error;
 }
 
-export async function sendEmailSignInLink(email: string, redirectTo = `${window.location.origin}/auth/callback`): Promise<void> {
+export async function sendEmailSignInLink(email: string, redirectTo = resolveAuthRedirect()): Promise<void> {
   const { error } = await requireSupabase().auth.signInWithOtp({
     email,
     options: { emailRedirectTo: redirectTo },
