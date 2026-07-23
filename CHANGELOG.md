@@ -12,10 +12,11 @@ legacy token-bearing URL fragments, and returns safe sign-in errors to the login
 page. Added focused redirect, exchange, token-fragment, callback-success, and
 callback-error tests.
 
-**Verification**: pending GitHub CI for TypeScript compilation, unit tests, and
-the production build. Supabase Authentication URL Configuration must allow the
-production callback URL; provider secrets remain dashboard-managed and are not
-stored in the repository.
+**Verification**: GitHub CI passed TypeScript compilation, the complete unit-test
+suite, the production build, Edge Function checks, and API contract validation.
+Supabase Authentication URL Configuration must allow the production callback
+URL; provider secrets remain dashboard-managed and are not stored in the
+repository.
 
 ## 2026-07-22 — v1.0.13 media assets, Boards, and Proxmox worker
 
