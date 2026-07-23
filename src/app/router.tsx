@@ -44,6 +44,8 @@ function placeholder(path: string) {
 // Board editor (the heaviest single screen — canvas/drag/resize code), and
 // the internal-only dev showcase (never needed in the real product at all).
 const LandingPageLazy = () => lazyRoute(() => import("../pages/landing/LandingPage").then((m) => ({ default: m.LandingPage })));
+const DocsPageLazy = () => lazyRoute(() => import("../pages/docs/DocsPage").then((m) => ({ default: m.DocsPage })));
+const CommunityPageLazy = () => lazyRoute(() => import("../pages/community/CommunityPage").then((m) => ({ default: m.CommunityPage })));
 const BoardEditorPageLazy = () => lazyRoute(() => import("../pages/boards/BoardEditorPage").then((m) => ({ default: m.BoardEditorPage })));
 const ComponentShowcasePageLazy = () => lazyRoute(() => import("../pages/dev/ComponentShowcasePage").then((m) => ({ default: m.ComponentShowcasePage })));
 const EditorPreviewPageLazy = () => lazyRoute(() => import("../pages/dev/EditorPreviewPage").then((m) => ({ default: m.EditorPreviewPage })));
@@ -53,6 +55,8 @@ const EditorPreviewPageLazy = () => lazyRoute(() => import("../pages/dev/EditorP
 // route tree.
 export const routeTree: RouteObject[] = [
   { path: "/", element: LandingPageLazy() },
+  { path: "/docs", element: DocsPageLazy() },
+  { path: "/community", element: CommunityPageLazy() },
   { path: "/login", element: <LoginPage /> },
   { path: "/auth/callback", element: <CallbackPage /> },
   { path: "/unauthorized", element: <UnauthorizedPage /> },

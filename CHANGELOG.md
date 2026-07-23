@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased — Customer docs and community forum
+
+Added the public customer guide at `/docs` covering Board creation, Display
+pairing, Raspberry Pi players, Windows kiosk mode, smart TV browsers, plan
+limits, version guidance, and network troubleshooting. Added `/community` as
+a public forum with seeded setup conversations, searchable topics, signed-in
+question and answer posting, and RLS-protected Supabase persistence.
+
 ## 2026-07-23 — v1.0.17 Editor shapes and element styling
 
 Added shape variants (rectangle, ellipse, triangle, diamond, hexagon, star,

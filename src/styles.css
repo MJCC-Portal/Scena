@@ -3,6 +3,8 @@
 @import "./styles/components.css";
 @import "./styles/shell.css";
 @import "./styles/landing.css";
+@import "./styles/docs.css";
+@import "./styles/community.css";
 @import "./styles/auth.css";
 @import "./styles/editor.css";
 @import "./styles/states.css";

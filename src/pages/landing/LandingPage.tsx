@@ -84,6 +84,7 @@ export function LandingPage() {
             {NAV_LINKS.map((link) => (
               <a key={link.label} href={link.href}>{link.label}</a>
             ))}
+            <Link to="/docs">Docs</Link>
           </div>
           <div className="scena-landing__nav-actions">
             {signedIn ? (
@@ -221,6 +222,8 @@ export function LandingPage() {
           <div className="scena-footer__col">
             <h4>Resources</h4>
             <ul>
+              <li><Link to="/docs">Customer docs</Link></li>
+              <li><Link to="/community">Community forum</Link></li>
               <li><a href="#how-it-works">How it works</a></li>
               <li><a href="#faq">FAQ</a></li>
             </ul>
