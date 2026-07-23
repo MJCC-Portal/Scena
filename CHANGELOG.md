@@ -1,5 +1,27 @@
 # Changelog
 
+## 2026-07-23 — v1.0.15 UI API readiness
+
+Added the production `workspace-context` Edge Function for multi-Workspace
+bootstrap and selection, including safe fallback provisioning of the initial
+Personal Workspace, entitlement loading, membership validation, and persisted
+Workspace preference.
+
+Added typed browser clients for Workspace context, Asset upload/processing, and
+Board drafts. The clients require an authenticated session, preserve stable API
+error codes/status/request IDs/details, expose capability switches, and keep
+unsupported publishing, video, audio, font, and scene-render controls disabled.
+
+Added the live-schema TypeScript compatibility overlay, removed the manager
+guard's Team-only assumption, made Personal Workspaces valid manager contexts,
+documented the first UI integration contract, extended contract validation, and
+tracked database hardening that removes public execution of internal Asset and
+Board quota helpers.
+
+**Verification target**: TypeScript, unit tests, production build, every Edge
+Function, API contracts, live migration advisors, production Workspace context,
+and the already-passed external-network Asset and Board acceptance paths.
+
 ## 2026-07-23 — v1.0.14 production PKCE authentication
 
 Changed Google OAuth and email-link authentication to use the PKCE code flow
