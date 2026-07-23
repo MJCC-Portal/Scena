@@ -1,0 +1,226 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Scena Media and Board Interaction API",
+    "version": "0.1.0",
+    "description": "Test-backend contract for Workspace Assets, Proxmox media workers, and Canva-style Board drafts. PowerPoints are reusable Assets; their processed slides become Asset Pages. Boards remain independent designs containing Scenes and static or live Elements."
+  },
+  "x-verification": {
+    "status": "test-backend-verified",
+    "verified_on": "2026-07-22",
+    "supabase_project": "zglbgqeccebqnijcqfkb",
+    "asset_upload_version": 1,
+    "media_worker_version": 1,
+    "board_interaction_version": 1,
+    "acceptance": "Rollback-safe database acceptance passed for Board save/versioning, a revision, static text, live clock, dynamic QR, music-player elements, Asset finalization, worker claim, heartbeat, and retry transition. A real file upload and Proxmox processing completion remains required."
+  },
+  "servers": [
+    {
+      "url": "https://zglbgqeccebqnijcqfkb.supabase.co/functions/v1",
+      "description": "Scena test Supabase Edge Functions"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "Supabase JWT"
+      },
+      "WorkerToken": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Dedicated Scena media-worker token. It is SHA-256 hashed at rest and is not a Supabase service-role key."
+      }
+    },
+    "schemas": {
+      "AssetKind": {
+        "type": "string",
+        "enum": ["image", "powerpoint", "pdf", "video", "audio", "font", "other"]
+      },
+      "AssetStatus": {
+        "type": "string",
+        "enum": ["pending_upload", "uploaded", "queued", "processing", "ready", "failed", "archived"]
+      },
+      "ElementType": {
+        "type": "string",
+        "enum": ["text", "image", "shape", "asset_page", "clock", "date", "countdown", "qr_static", "qr_dynamic", "music_player", "ticker", "carousel", "video", "weather", "data_text"]
+      },
+      "RenderMode": {
+        "type": "string",
+        "enum": ["static", "live", "interactive"]
+      },
+      "SceneElement": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "element_type": { "$ref": "#/components/schemas/ElementType" },
+          "render_mode": { "$ref": "#/components/schemas/RenderMode" },
+          "name": { "type": ["string", "null"] },
+          "x": { "type": "number" },
+          "y": { "type": "number" },
+          "width": { "type": "number", "exclusiveMinimum": 0 },
+          "height": { "type": "number", "exclusiveMinimum": 0 },
+          "rotation": { "type": "number" },
+          "opacity": { "type": "number", "minimum": 0, "maximum": 1 },
+          "z_index": { "type": "integer" },
+          "is_locked": { "type": "boolean" },
+          "is_visible": { "type": "boolean" },
+          "asset_id": { "type": ["string", "null"], "format": "uuid" },
+          "asset_page_id": { "type": ["string", "null"], "format": "uuid" },
+          "config": { "type": "object" }
+        },
+        "required": ["id", "element_type", "x", "y", "width", "height", "config"]
+      },
+      "BoardScene": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "name": { "type": "string" },
+          "sort_order": { "type": "integer", "minimum": 0 },
+          "duration_ms": { "type": "integer", "minimum": 1000 },
+          "transition_type": { "type": "string", "enum": ["none", "fade", "slide_left", "slide_right", "zoom", "dissolve"] },
+          "transition_config": { "type": "object" },
+          "background": { "type": "object" },
+          "is_hidden": { "type": "boolean" },
+          "elements": { "type": "array", "items": { "$ref": "#/components/schemas/SceneElement" } }
+        },
+        "required": ["id", "name", "sort_order", "duration_ms", "elements"]
+      },
+      "BoardSnapshot": {
+        "type": "object",
+        "properties": {
+          "board": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+              "canvas_width": { "type": "integer", "minimum": 64, "maximum": 7680 },
+              "canvas_height": { "type": "integer", "minimum": 64, "maximum": 7680 },
+              "background_color": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$" }
+            }
+          },
+          "scenes": {
+            "type": "array",
+            "maxItems": 100,
+            "items": { "$ref": "#/components/schemas/BoardScene" }
+          }
+        },
+        "required": ["board", "scenes"]
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": { "type": "string" },
+              "message": { "type": "string" },
+              "request_id": { "type": "string", "format": "uuid" },
+              "details": { "type": "object" }
+            },
+            "required": ["code", "message"]
+          }
+        },
+        "required": ["error"]
+      }
+    }
+  },
+  "paths": {
+    "/asset-upload": {
+      "post": {
+        "summary": "Create, finalize, list, inspect, sign, or archive Workspace Assets",
+        "security": [{ "BearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "action": { "type": "string", "enum": ["create", "finalize", "list", "get", "signed_read", "archive"] },
+                  "workspace_id": { "type": "string", "format": "uuid" },
+                  "asset_id": { "type": "string", "format": "uuid" },
+                  "variant_id": { "type": "string", "format": "uuid" },
+                  "filename": { "type": "string", "maxLength": 255 },
+                  "mime_type": { "type": "string" },
+                  "size_bytes": { "type": "integer", "maximum": 262144000 }
+                },
+                "required": ["action"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Asset operation completed" },
+          "201": { "description": "Pending Asset and signed upload target created" },
+          "409": { "description": "Upload incomplete, quota reached, or state conflict", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/board-interaction": {
+      "post": {
+        "summary": "Create, load, save, revise, list, or archive Boards",
+        "security": [{ "BearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "action": { "type": "string", "enum": ["list", "create", "get", "save", "create_revision", "list_revisions", "archive"] },
+                  "workspace_id": { "type": "string", "format": "uuid" },
+                  "board_id": { "type": "string", "format": "uuid" },
+                  "base_version": { "type": "integer", "minimum": 1 },
+                  "snapshot": { "$ref": "#/components/schemas/BoardSnapshot" },
+                  "name": { "type": "string", "maxLength": 120 },
+                  "label": { "type": "string", "maxLength": 120 }
+                },
+                "required": ["action"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Board operation completed" },
+          "201": { "description": "Board or revision created" },
+          "409": { "description": "Board version or quota conflict", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/media-worker": {
+      "post": {
+        "summary": "Claim and execute media jobs from the outbound-only Proxmox worker",
+        "security": [{ "WorkerToken": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "action": { "type": "string", "enum": ["ping", "claim", "heartbeat", "upload_targets", "complete", "fail"] },
+                  "job_id": { "type": "string", "format": "uuid" },
+                  "lease_token": { "type": "string" },
+                  "lease_seconds": { "type": "integer", "minimum": 60, "maximum": 3600 },
+                  "outputs": { "type": "array", "maxItems": 500, "items": { "type": "object" } },
+                  "manifest_path": { "type": "string" },
+                  "page_count": { "type": "integer", "minimum": 0 },
+                  "asset_metadata": { "type": "object" },
+                  "error_code": { "type": "string", "maxLength": 120 },
+                  "error_message_safe": { "type": "string", "maxLength": 500 }
+                },
+                "required": ["action"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Worker operation completed" },
+          "401": { "description": "Worker token invalid", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "409": { "description": "Lease invalid or output incomplete", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    }
+  }
+}
