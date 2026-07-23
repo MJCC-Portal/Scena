@@ -1,11 +1,7 @@
 name: Scena CI
 
 # Read-only, no-deploy verification for every PR into main and every push
-# to main. This workflow checks the aircraft before takeoff — it must
-# never also grab the throttle: no `npm run build`-triggered deploy, no
-# `deploy_edge_function`, no `apply_migration`, no Stripe calls, no
-# production secret. See docs/API_V2_PROGRESS.md for why this was added
-# as part of the API v2 foundation phase rather than left for later.
+# to main. This workflow checks the aircraft before takeoff and never deploys.
 
 on:
   pull_request:
@@ -22,9 +18,6 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  # Non-secret build-time placeholders. Vite embeds these at build time;
-  # they are never used to reach the live Scena backend from CI, and no
-  # test in this repo depends on a real Supabase connection.
   VITE_SUPABASE_URL: "https://ci-placeholder.supabase.co"
   VITE_SUPABASE_PUBLISHABLE_KEY: "ci-placeholder-anon-key"
 
@@ -48,7 +41,17 @@ jobs:
         run: npm ci
 
       - name: TypeScript project build
-        run: npx tsc -b
+        run: |
+          set -o pipefail
+          npx tsc -b 2>&1 | tee tsc.log
+
+      - name: Upload TypeScript failure log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: typescript-failure-log
+          path: tsc.log
+          retention-days: 1
 
       - name: Unit tests
         run: npx vitest run
@@ -81,17 +84,6 @@ jobs:
           deno-version: v2.x
 
       - name: Mirror supabase/functions outside the npm workspace
-        # Deno's npm-specifier resolution walks up to the nearest
-        # package.json/node_modules. Checking a function in place would
-        # find this repo's frontend package.json/node_modules and try to
-        # satisfy the ENTIRE frontend dependency tree (React, Vite, etc.)
-        # to resolve one unrelated transitive npm: type reference —
-        # unrelated to whether the function itself type-checks, and it
-        # can fail on things like a minimum-dependency-age policy on a
-        # frontend devDependency. Mirroring to $RUNNER_TEMP (no ancestor
-        # package.json) removes that interference entirely; relative
-        # imports between a function and _shared/ still resolve
-        # correctly since the whole functions/ tree moves together.
         run: |
           mkdir -p "$RUNNER_TEMP/functions-check"
           cp -r supabase/functions "$RUNNER_TEMP/functions-check/functions"
@@ -117,7 +109,7 @@ jobs:
           done
           echo "Checked $checked Edge Function(s)."
           if [ "$checked" -eq 0 ]; then
-            echo "::error::No Edge Function entrypoints were discovered — the discovery step itself is broken."
+            echo "::error::No Edge Function entrypoints were discovered."
             exit 1
           fi
           exit $fail
