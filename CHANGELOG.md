@@ -1,5 +1,30 @@
 # Changelog
 
+## 2026-07-22 — v1.0.13 media assets, Boards, and Proxmox worker
+
+Added the canonical Workspace media and Board foundation with private Asset
+storage, upload quota accounting, Asset Pages and Variants, leased processing
+jobs, Boards, Scenes, Elements, revisions, publications, dynamic QR records,
+and audio-provider references.
+
+Added and deployed the `asset-upload`, `media-worker`, and
+`board-interaction` Edge Functions to the current test Supabase project.
+Registered `scena-media-01` with one-job concurrency and verified dedicated
+hashed-token authentication, queue polling, and automatic restart after a VM
+reboot.
+
+Added the outbound-only Python worker for `image_ingest`, `pdf_import`, and
+`powerpoint_import`, including signed source downloads, LibreOffice, Poppler,
+and Pillow processing, signed output uploads, manifest generation, heartbeats,
+completion callbacks, retry-safe failure callbacks, a hardened systemd unit,
+and a credential-preserving installer.
+
+**Verification**: GitHub CI was green for the API foundation; rollback-safe
+database acceptance passed; worker dependency checks and image, PDF, and
+PowerPoint processor smoke tests passed; the VM authenticated and remained
+active after reboot. A real source upload through processing completion remains
+pending, and the frontend still uses the legacy LXC `presentation-upload` path.
+
 ## 2026-07-20 — Backend rebuild gap closure: invalidation, verified tests, scheduler
 
 Closed the verification and correctness gaps left open by the previous

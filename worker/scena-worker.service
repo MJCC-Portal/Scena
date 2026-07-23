@@ -1,0 +1,34 @@
+[Unit]
+Description=Scena Media Worker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=scena
+Group=scena
+EnvironmentFile=/etc/scena-worker/worker.env
+WorkingDirectory=/opt/scena-worker
+ExecStartPre=/opt/scena-worker/venv/bin/python -m scena_worker check
+ExecStart=/opt/scena-worker/venv/bin/python -m scena_worker run
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+KillMode=mixed
+UMask=0027
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/cache/scena-worker /var/lib/scena-worker /var/log/scena-worker
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ProtectClock=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target
