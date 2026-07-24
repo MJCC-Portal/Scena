@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-07-23
+
+- Board editor asset slice: render signed image and PowerPoint/PDF page previews on the canvas, show real upload thumbnails, and add local emoji/GIF-style library tiles alongside preset shapes.
+- Asset signed-read contract now returns page-aware preview metadata and supports selecting previews by page ID, page number, or variant type without changing storage privacy or RLS.
+- Board editor element slice: replace live-element placeholders with real clock, date, countdown, QR, music, ticker, carousel, video, weather, and data-text previews; add persisted configuration controls and a pinned QR generator dependency.
+- Display runtime slice: assign a Board to a live session, render its scenes and live widgets on the kiosk, use the session location timezone for clock/date, and refresh weather through the server-side Open-Meteo adapter.
+
 ## Unreleased — Customer docs and community forum
 
 Added the public customer guide at `/docs` covering Board creation, Display

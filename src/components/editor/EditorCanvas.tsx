@@ -5,6 +5,7 @@
 import { useRef, useState } from "react";
 import type { BoardScene, SceneElement, ShapeVariant } from "../../services/scena-api/boards";
 import { readBorderConfig, readShapeConfig } from "../../services/scena-api/boards";
+import { ElementBody } from "./ElementBody";
 
 type DragKind = "move" | "resize-nw" | "resize-ne" | "resize-sw" | "resize-se" | "rotate";
 
@@ -25,13 +26,15 @@ export interface EditorCanvasProps {
   onSelect: (elementId: string | null) => void;
   onCommit: (elementId: string, patch: Partial<SceneElement>) => void;
   zoom: number;
+  /** Signed, short-lived asset URLs resolved by the board page. */
+  assetPreviewUrls?: ReadonlyMap<string, string>;
 }
 
 const BASE_SCALE = 0.4;
 const SNAP_THRESHOLD = 1.5;
 
 export function EditorCanvas({
-  canvasWidth, canvasHeight, backgroundColor, scene, selectedElementId, onSelect, onCommit, zoom,
+  canvasWidth, canvasHeight, backgroundColor, scene, selectedElementId, onSelect, onCommit, zoom, assetPreviewUrls,
 }: EditorCanvasProps) {
   const canvasRef = useRef<HTMLDivElement>(null);
   const [drag, setDrag] = useState<DragState | null>(null);
@@ -141,7 +144,9 @@ export function EditorCanvas({
               onClick={(event) => event.stopPropagation()}
             >
               <div className="scena-editor__element-body" style={elementBodyStyle(element)}>
-                {element.element_type === "shape" ? <ShapeBody element={element} /> : elementLabel(element)}
+                {element.element_type === "shape"
+                  ? <ShapeBody element={element} />
+                  : <ElementBody element={element} assetUrl={assetPreviewUrls?.get(element.asset_page_id ?? element.asset_id ?? "")} />}
               </div>
               {isSelected && !element.is_locked && (
                 <>
@@ -168,11 +173,6 @@ function elementColor(element: SceneElement): string {
   if (element.element_type === "shape") return "rgba(91,124,250,.35)";
   if (element.element_type === "image" || element.element_type === "asset_page") return "rgba(126,179,255,.16)";
   return "rgba(255,255,255,.06)";
-}
-
-function elementLabel(element: SceneElement): string {
-  if (element.element_type === "text") return (element.config as { text?: string })?.text ?? "Text";
-  return element.name ?? element.element_type.replace(/_/g, " ");
 }
 
 // Borders are a generic element property (task: "a text or image element

@@ -52,6 +52,53 @@ export interface SessionData {
   updated_at: string;
 }
 
+export interface BoardElementData {
+  id: string;
+  element_type: string;
+  render_mode: string;
+  name: string | null;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  rotation: number;
+  opacity: number;
+  z_index: number;
+  is_locked: boolean;
+  is_visible: boolean;
+  asset_id: string | null;
+  asset_page_id: string | null;
+  config: Record<string, unknown>;
+}
+
+export interface BoardSceneData {
+  id: string;
+  name: string;
+  sort_order: number;
+  duration_ms: number;
+  transition_type: string;
+  transition_config: Record<string, unknown>;
+  background: Record<string, unknown>;
+  is_hidden: boolean;
+  elements: BoardElementData[];
+}
+
+export interface BoardData {
+  id: string;
+  workspace_id: string;
+  name: string;
+  canvas_width: number;
+  canvas_height: number;
+  background_color: string;
+  status: string;
+  version: number;
+  updated_at: string;
+  session_started_at: string | null;
+  session_updated_at: string;
+  location_timezone: string | null;
+  scenes: BoardSceneData[];
+}
+
 export type ResolvedDisplayState =
   | { status: "standby"; screen_name: string; reason: "no_active_session" | "screen_disabled" | "no_layout" }
   | {

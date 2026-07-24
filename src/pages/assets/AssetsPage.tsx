@@ -134,8 +134,9 @@ export function AssetsPage() {
       ) : (
         <div className="scena-table-wrap">
           <table className="scena-table">
+            <caption className="scena-visually-hidden">Assets</caption>
             <thead>
-              <tr><th>Name</th><th>Type</th><th>Status</th><th>Uploaded</th></tr>
+              <tr><th scope="col">Name</th><th scope="col">Type</th><th scope="col">Status</th><th scope="col">Uploaded</th></tr>
             </thead>
             <tbody>
               {filtered.map((asset) => (

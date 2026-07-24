@@ -13,6 +13,7 @@
 import { useEffect, useRef, useState } from "react";
 import { forgetDevice, pollState, registerDevice, storedToken, subscribeToOrgInvalidation, type DisplayState } from "../lib/display";
 import { ScenaMark } from "../components/brand/ScenaMark";
+import { BoardRenderer } from "./BoardRenderer";
 
 // Brand lockup shown on every non-showing kiosk state. Pure presentation —
 // ScenaMark imports nothing from src/auth/* or src/app/*, so the kiosk
@@ -140,7 +141,7 @@ function LayoutRenderer({ state }: { state: Extract<DisplayState, { status: "sho
       clipPath: `inset(${viewport.y}% ${100 - viewport.x - viewport.width}% ${100 - viewport.y - viewport.height}% ${viewport.x}%)`,
     }}
   >
-    {layout.tiles.filter((t) => t.is_visible).map((tile) => (
+    {state.board ? <BoardRenderer board={state.board} /> : layout.tiles.filter((t) => t.is_visible).map((tile) => (
       <div
         key={tile.id}
         style={{

@@ -4,11 +4,15 @@ import { ApiError, mapPostgresError } from "../shared/errors";
 import { requireBoolean, requireDisplayMode, requirePercent, requireRotation, requireString, requireUuid, type DisplayMode } from "../shared/validation";
 import type { Tables } from "../shared/database.types";
 
-export type DisplaySession = Tables<"display_sessions">;
+export type DisplaySession = Tables<"display_sessions"> & { board_id: string | null };
 export type SessionScreen = Tables<"display_session_screens">;
 
 export interface SessionWithScreens extends DisplaySession {
   screens: SessionScreen[];
+}
+
+function withBoardId<T extends object>(row: T): T & { board_id: string | null } {
+  return { ...row, board_id: (row as T & { board_id?: string | null }).board_id ?? null };
 }
 
 export async function listSessions(orgId: string, locationId?: string): Promise<DisplaySession[]> {
@@ -18,7 +22,7 @@ export async function listSessions(orgId: string, locationId?: string): Promise<
   if (locationId) query = query.eq("location_id", requireUuid(locationId, "location_id"));
   const { data, error } = await query;
   if (error) throw mapPostgresError(error);
-  return data ?? [];
+  return (data ?? []).map(withBoardId);
 }
 
 export async function getSession(orgId: string, sessionId: string): Promise<SessionWithScreens | null> {
@@ -36,7 +40,7 @@ export async function getSession(orgId: string, sessionId: string): Promise<Sess
     .neq("assignment_status", "removed")
     .order("screen_order");
   if (screensError) throw mapPostgresError(screensError);
-  return { ...session, screens: screens ?? [] };
+  return { ...withBoardId(session), screens: screens ?? [] };
 }
 
 /** Always created as 'draft' — the validate_new_display_session trigger
@@ -48,7 +52,7 @@ export async function createDraftSession(orgId: string, locationId: string, name
   const supabase = requireSupabase();
   const { data, error } = await supabase.from("display_sessions").insert({ org_id: orgId, location_id: locationId, name: cleanName }).select("*").single();
   if (error) throw mapPostgresError(error);
-  return data;
+  return withBoardId(data);
 }
 
 export async function renameSession(orgId: string, sessionId: string, name: string): Promise<DisplaySession> {
@@ -58,7 +62,7 @@ export async function renameSession(orgId: string, sessionId: string, name: stri
   const supabase = requireSupabase();
   const { data, error } = await supabase.from("display_sessions").update({ name: cleanName }).eq("org_id", orgId).eq("id", sessionId).select("*").single();
   if (error) throw mapPostgresError(error);
-  return data;
+  return withBoardId(data);
 }
 
 /** Draft-only delete — an active/stopped session's history must survive
@@ -91,7 +95,7 @@ export async function setDisplayMode(orgId: string, sessionId: string, mode: Dis
     .single();
   if (error) throw mapPostgresError(error);
   broadcastOrgInvalidation(orgId);
-  return data;
+  return withBoardId(data);
 }
 
 /** Flips status -> active. Screen-count / layout-completeness / single-mode
@@ -114,7 +118,7 @@ export async function startSession(orgId: string, sessionId: string, startedBy: 
   if (error) throw mapPostgresError(error);
   if (!data) throw new ApiError("SESSION_NOT_DRAFT", "Only a draft session can be started.", 409);
   broadcastOrgInvalidation(orgId);
-  return data;
+  return withBoardId(data);
 }
 
 /** Stopping releases all screens (handle_display_session_status trigger
@@ -136,7 +140,7 @@ export async function stopSession(orgId: string, sessionId: string, stoppedBy: s
   if (error) throw mapPostgresError(error);
   if (!data) throw new ApiError("SESSION_NOT_ACTIVE", "Only an active session can be stopped.", 409);
   broadcastOrgInvalidation(orgId);
-  return data;
+  return withBoardId(data);
 }
 
 export interface AddScreenInput {
@@ -186,6 +190,25 @@ export async function addScreenToSession(orgId: string, locationId: string, sess
   if (error) throw mapPostgresError(error);
   broadcastOrgInvalidation(orgId);
   return data;
+}
+
+/** Assigns a workspace Board to a session. A null assignment deliberately
+ * preserves the legacy Layout playback path in display-gateway. */
+export async function setSessionBoard(orgId: string, sessionId: string, boardId: string | null): Promise<DisplaySession> {
+  requireUuid(orgId, "org_id");
+  requireUuid(sessionId, "session_id");
+  if (boardId !== null) requireUuid(boardId, "board_id");
+  const supabase = requireSupabase();
+  const { data, error } = await (supabase.from("display_sessions") as any)
+    .update({ board_id: boardId })
+    .eq("org_id", orgId)
+    .eq("id", sessionId)
+    .eq("status", "draft")
+    .select("*")
+    .single();
+  if (error) throw mapPostgresError(error);
+  broadcastOrgInvalidation(orgId);
+  return withBoardId(data);
 }
 
 export async function updateSessionScreen(

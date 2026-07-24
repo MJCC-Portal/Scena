@@ -1,11 +1,12 @@
 // Drawer panel contents for the editor's left rail. All presentational:
 // data arrives via props (the real page fetches Assets; the /dev/editor
 // preview passes an empty list), so these can render without auth.
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import {
   TextT, ImageSquare, Shapes, FileText, QrCode, Clock, CalendarBlank, Timer,
-  Megaphone, MusicNotes, VideoCamera, CloudSun, TextAa, Rows, Crown,
+  Megaphone, MusicNotes, VideoCamera, CloudSun, TextAa, Rows, Crown, Smiley,
+  MagnifyingGlass, FilmStrip,
 } from "@phosphor-icons/react";
 import { SCENA_UI_API_CAPABILITIES } from "../../services/scena-api/capabilities";
 import type { AssetSummary } from "../../services/scena-api/assets";
@@ -59,9 +60,10 @@ export interface ElementsGridPanelProps {
   /** The single "Shape" tile is a sub-palette — one tile per variant,
    * each inserting a shape preset with that variant set. */
   onAddShape: (variant: ShapeVariant) => void;
+  onAddLibraryAsset?: (type: "image" | "text", config: Record<string, unknown>) => void;
 }
 
-export function ElementsGridPanel({ onAddElement, onAddShape }: ElementsGridPanelProps) {
+export function ElementsGridPanel({ onAddElement, onAddShape, onAddLibraryAsset = () => {} }: ElementsGridPanelProps) {
   // "shape" gets its own sub-palette below instead of a single generic tile.
   const staticTypes = SCENA_UI_API_CAPABILITIES.elements.static.filter((type) => type !== "shape");
   return (
@@ -100,7 +102,49 @@ export function ElementsGridPanel({ onAddElement, onAddShape }: ElementsGridPane
           </button>
         ))}
       </div>
+
+      <LibraryPanel onAddLibraryAsset={onAddLibraryAsset} />
     </div>
+  );
+}
+
+const LOCAL_EMOJI = ["😀", "🎉", "❤️", "⭐", "👍", "🔥", "🌈", "🎵", "☀️", "✅", "📣", "✨"];
+
+const LOCAL_GIF_LIBRARY = [
+  { id: "sparkle", label: "Sparkle", colors: ["#7c3aed", "#22d3ee"] },
+  { id: "celebrate", label: "Celebrate", colors: ["#f97316", "#ec4899"] },
+  { id: "pulse", label: "Pulse", colors: ["#2563eb", "#14b8a6"] },
+  { id: "sunrise", label: "Sunrise", colors: ["#f59e0b", "#ef4444"] },
+];
+
+function localLibraryImage(colors: string[]): string {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 180"><defs><linearGradient id="g" x1="0" x2="1"><stop stop-color="${colors[0]}"/><stop offset="1" stop-color="${colors[1]}"/></linearGradient></defs><rect width="320" height="180" rx="18" fill="url(#g)"/><circle cx="82" cy="90" r="28" fill="rgba(255,255,255,.65)"/><circle cx="160" cy="90" r="44" fill="none" stroke="rgba(255,255,255,.8)" stroke-width="7"/><circle cx="246" cy="90" r="22" fill="rgba(255,255,255,.5)"/></svg>`;
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+}
+
+function LibraryPanel({ onAddLibraryAsset = () => {} }: Pick<ElementsGridPanelProps, "onAddLibraryAsset">) {
+  const [query, setQuery] = useState("");
+  const normalized = query.trim().toLowerCase();
+  const gifs = LOCAL_GIF_LIBRARY.filter((item) => !normalized || item.label.toLowerCase().includes(normalized));
+  return (
+    <section className="scena-editor__library" aria-label="Emoji and GIF library">
+      <h4 className="scena-editor__drawer-section-title">Library</h4>
+      <label className="scena-editor__library-search">
+        <MagnifyingGlass size={16} aria-hidden="true" />
+        <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search emoji or GIFs" aria-label="Search emoji or GIFs" />
+      </label>
+      <div className="scena-editor__library-heading"><span><Smiley size={16} /> Emoji</span><small>Local</small></div>
+      <div className="scena-editor__emoji-grid">
+        {LOCAL_EMOJI.map((emoji) => <button key={emoji} type="button" className="scena-editor__emoji-tile" onClick={() => onAddLibraryAsset("text", { text: emoji })} aria-label={`Insert ${emoji}`}>{emoji}</button>)}
+      </div>
+      <div className="scena-editor__library-heading"><span><FilmStrip size={16} /> GIFs</span><small>Local library</small></div>
+      <div className="scena-editor__gif-grid">
+        {gifs.map((item) => <button key={item.id} type="button" className="scena-editor__gif-tile" onClick={() => onAddLibraryAsset("image", { src: localLibraryImage(item.colors), alt: item.label })}>
+          <img src={localLibraryImage(item.colors)} alt="" /><span>{item.label}</span>
+        </button>)}
+      </div>
+      {gifs.length === 0 && <p className="scena-editor__library-empty">No local GIFs match that search.</p>}
+    </section>
   );
 }
 
@@ -154,9 +198,10 @@ export interface UploadsPanelProps {
   /** null = still loading (skeletons); [] = empty state. */
   assets: AssetSummary[] | null;
   onInsertAsset: (assetId: string) => void;
+  previewUrls?: ReadonlyMap<string, string>;
 }
 
-export function UploadsPanel({ assets, onInsertAsset }: UploadsPanelProps) {
+export function UploadsPanel({ assets, previewUrls, onInsertAsset }: UploadsPanelProps) {
   if (assets === null) {
     return (
       <div style={{ display: "grid", gap: 8 }}>
@@ -172,8 +217,8 @@ export function UploadsPanel({ assets, onInsertAsset }: UploadsPanelProps) {
   return (
     <div>
       {assets.map((asset) => (
-        <button key={asset.id} type="button" className="scena-editor__element-option" onClick={() => onInsertAsset(asset.id)}>
-          <ImageSquare size={18} />
+        <button key={asset.id} type="button" className="scena-editor__asset-tile" onClick={() => onInsertAsset(asset.id)}>
+          {previewUrls?.get(asset.id) ? <img src={previewUrls.get(asset.id)} alt="" /> : <span className="scena-editor__asset-tile-fallback"><ImageSquare size={18} /></span>}
           <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{asset.original_filename}</span>
         </button>
       ))}

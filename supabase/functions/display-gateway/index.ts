@@ -16,7 +16,7 @@ import { serveJson, json } from "../_shared/http.ts";
 import { adminClient } from "../_shared/adminClient.ts";
 import { sha256 } from "../_shared/crypto.ts";
 import { ApiError } from "../_shared/errors.ts";
-import { resolveDisplayState, type LayoutData, type SessionData, type SessionScreenData, type TileData } from "../_shared/displayState.ts";
+import { resolveDisplayState, type BoardData, type BoardElementData, type BoardSceneData, type LayoutData, type SessionData, type SessionScreenData, type TileData } from "../_shared/displayState.ts";
 
 serveJson(async (req) => {
   const admin = adminClient();
@@ -45,7 +45,7 @@ serveJson(async (req) => {
   // Ready screen: find its current live assignment, if any.
   const { data: sessionScreen, error: ssError } = await admin
     .from("display_session_screens")
-    .select("id, session_id, is_enabled, is_primary, layout_id, rotation_degrees, viewport_x_percent, viewport_y_percent, viewport_width_percent, viewport_height_percent")
+      .select("id, session_id, is_enabled, is_primary, layout_id, rotation_degrees, viewport_x_percent, viewport_y_percent, viewport_width_percent, viewport_height_percent, updated_at")
     .eq("screen_id", screen.id)
     .eq("assignment_status", "active")
     .maybeSingle();
@@ -55,7 +55,7 @@ serveJson(async (req) => {
   if (sessionScreen) {
     const { data: sessionRow, error: sessionError } = await admin
       .from("display_sessions")
-      .select("id, name, status, display_mode, shared_layout_id, updated_at")
+      .select("id, name, status, display_mode, shared_layout_id, board_id, location_id, started_at, updated_at")
       .eq("id", sessionScreen.session_id)
       .maybeSingle();
     if (sessionError) throw ApiError.internal(sessionError.message);
@@ -64,6 +64,10 @@ serveJson(async (req) => {
 
   const layoutId = session && (session.display_mode === "duplicate" || session.display_mode === "extend") ? session.shared_layout_id : sessionScreen?.layout_id ?? null;
   const layout = layoutId ? await fetchResolvedLayout(admin, screen.org_id!, layoutId) : null;
+  const boardId = (session as SessionData & { board_id?: string | null } | null)?.board_id ?? null;
+  const board = boardId && session?.status === "active"
+    ? await fetchBoardSnapshot(admin, screen.org_id!, boardId, (session as SessionData & { started_at?: string | null; location_id?: string | null }).started_at ?? null, session.updated_at, (session as SessionData & { location_id?: string | null }).location_id ?? screen.location_id)
+    : null;
 
   const resolved = resolveDisplayState(
     screen.name,
@@ -72,8 +76,107 @@ serveJson(async (req) => {
     (id) => (layout && layout.id === id ? layout : null),
     () => new Date().toISOString(),
   );
-  return json({ ...resolved, org_id: screen.org_id }, 200);
+  const boardResolved = board && session && sessionScreen?.is_enabled
+    ? resolveBoardDisplayState(screen.name, session, sessionScreen as SessionScreenData, board)
+    : resolved;
+  return json({ ...boardResolved, org_id: screen.org_id, ...(board ? { board } : {}) }, 200);
 }, ["POST"]);
+
+function resolveBoardDisplayState(screenName: string, session: SessionData, sessionScreen: SessionScreenData, board: BoardData) {
+  const viewport = session.display_mode === "extend"
+    ? { x: sessionScreen.viewport_x_percent, y: sessionScreen.viewport_y_percent, width: sessionScreen.viewport_width_percent, height: sessionScreen.viewport_height_percent }
+    : { x: 0, y: 0, width: 100, height: 100 };
+  return {
+    status: "showing" as const,
+    screen_name: screenName,
+    session: { id: session.id, name: session.name },
+    display_mode: session.display_mode,
+    rotation_degrees: sessionScreen.rotation_degrees,
+    viewport,
+    content_version: `board:${board.id}:${board.version}:${board.updated_at}:${board.session_updated_at}`,
+    server_time: new Date().toISOString(),
+  };
+}
+
+async function fetchBoardSnapshot(
+  admin: ReturnType<typeof adminClient>,
+  workspaceId: string,
+  boardId: string,
+  sessionStartedAt: string | null,
+  sessionUpdatedAt: string,
+  locationId: string | null,
+): Promise<BoardData | null> {
+  const { data: board, error: boardError } = await admin
+    .from("boards")
+    .select("id, workspace_id, name, canvas_width, canvas_height, background_color, status, version, updated_at")
+    .eq("workspace_id", workspaceId)
+    .eq("id", boardId)
+    .eq("status", "active")
+    .maybeSingle();
+  if (boardError) throw ApiError.internal(boardError.message);
+  if (!board) return null;
+
+  const [{ data: scenes, error: scenesError }, { data: elements, error: elementsError }, { data: location, error: locationError }] = await Promise.all([
+    admin.from("board_scenes").select("id, workspace_id, board_id, name, sort_order, duration_ms, transition_type, transition_config, background, is_hidden, updated_at").eq("workspace_id", workspaceId).eq("board_id", boardId).order("sort_order").order("created_at"),
+    admin.from("scene_elements").select("id, workspace_id, board_id, scene_id, element_type, render_mode, name, x, y, width, height, rotation, opacity, z_index, is_locked, is_visible, asset_id, asset_page_id, config, updated_at").eq("workspace_id", workspaceId).eq("board_id", boardId).eq("is_visible", true).order("z_index"),
+    locationId ? admin.from("locations").select("timezone").eq("org_id", workspaceId).eq("id", locationId).maybeSingle() : Promise.resolve({ data: null, error: null }),
+  ]);
+  if (scenesError) throw ApiError.internal(scenesError.message);
+  if (elementsError) throw ApiError.internal(elementsError.message);
+  if (locationError) throw ApiError.internal(locationError.message);
+
+  const timezone = typeof location?.timezone === "string" && location.timezone ? location.timezone : null;
+  const elementsByScene = new Map<string, BoardElementData[]>();
+  for (const row of elements ?? []) {
+    const config = jsonRecord(row.config);
+    if (timezone && (row.element_type === "clock" || row.element_type === "date") && !config.time_zone && !config.timeZone) config.time_zone = timezone;
+    const item: BoardElementData = {
+      id: row.id,
+      element_type: row.element_type,
+      render_mode: row.render_mode,
+      name: row.name,
+      x: Number(row.x), y: Number(row.y), width: Number(row.width), height: Number(row.height),
+      rotation: Number(row.rotation), opacity: Number(row.opacity), z_index: Number(row.z_index),
+      is_locked: Boolean(row.is_locked), is_visible: Boolean(row.is_visible),
+      asset_id: row.asset_id, asset_page_id: row.asset_page_id, config,
+    };
+    const current = elementsByScene.get(row.scene_id) ?? [];
+    current.push(item);
+    elementsByScene.set(row.scene_id, current);
+  }
+
+  const boardScenes: BoardSceneData[] = (scenes ?? []).filter((scene) => !scene.is_hidden).map((scene) => ({
+    id: scene.id,
+    name: scene.name,
+    sort_order: Number(scene.sort_order),
+    duration_ms: Number(scene.duration_ms),
+    transition_type: scene.transition_type,
+    transition_config: jsonRecord(scene.transition_config),
+    background: jsonRecord(scene.background),
+    is_hidden: Boolean(scene.is_hidden),
+    elements: elementsByScene.get(scene.id) ?? [],
+  }));
+
+  return {
+    id: board.id,
+    workspace_id: board.workspace_id,
+    name: board.name,
+    canvas_width: Number(board.canvas_width),
+    canvas_height: Number(board.canvas_height),
+    background_color: board.background_color,
+    status: board.status,
+    version: Number(board.version),
+    updated_at: board.updated_at,
+    session_started_at: sessionStartedAt,
+    session_updated_at: sessionUpdatedAt,
+    location_timezone: timezone,
+    scenes: boardScenes,
+  };
+}
+
+function jsonRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? { ...(value as Record<string, unknown>) } : {};
+}
 
 async function fetchResolvedLayout(admin: ReturnType<typeof adminClient>, orgId: string, layoutId: string): Promise<LayoutData | null> {
   const { data: layoutRow, error: layoutError } = await admin

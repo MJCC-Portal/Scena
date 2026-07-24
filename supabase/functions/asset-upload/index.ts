@@ -214,32 +214,71 @@ async function getAsset(auth: AuthContext, body: Record<string, unknown>, reques
 async function signedRead(auth: AuthContext, body: Record<string, unknown>, requestId: string): Promise<Response> {
   const assetId = uuid(body.asset_id, "asset_id");
   const variantId = optionalUuid(body.variant_id, "variant_id");
+  const pageId = optionalUuid(body.page_id, "page_id");
+  const pageNumber = optionalPositiveInteger(body.page_number, "page_number");
+  const requestedVariantType = text(body.variant_type);
   const expiresIn = Math.min(Math.max(integer(body.expires_in, 900), 60), 3600);
+
+  if (requestedVariantType && !variantId && !pageId && pageNumber === null) {
+    return error("VALIDATION_FAILED", "page_id or page_number is required with variant_type.", 400, requestId);
+  }
 
   const { data: asset, error: assetError } = await auth.userClient
     .from("assets")
-    .select("id,workspace_id,source_object_path")
+    .select("id,workspace_id,source_object_path,mime_type,source_size_bytes,metadata")
     .eq("id", assetId)
     .maybeSingle();
   if (assetError) throw new Error(`asset lookup failed: ${assetError.message}`);
   if (!asset) return error("ASSET_NOT_FOUND", "Asset not found.", 404, requestId);
 
   let objectPath = String(asset.source_object_path ?? "");
+  let preview = {
+    page_id: null as string | null,
+    page_number: null as number | null,
+    variant_type: "source" as string,
+    mime_type: String(asset.mime_type ?? "application/octet-stream"),
+    width: null as number | null,
+    height: null as number | null,
+    duration_ms: null as number | null,
+    size_bytes: Number.isSafeInteger(asset.source_size_bytes) ? Number(asset.source_size_bytes) : null,
+    metadata: (asset.metadata ?? {}) as Record<string, unknown>,
+  };
   if (variantId) {
     const { data: variant, error: variantError } = await auth.userClient
       .from("asset_variants")
-      .select("object_path")
+      .select("object_path,asset_page_id,variant_type,mime_type,width,height,duration_ms,size_bytes,metadata")
       .eq("id", variantId)
       .eq("asset_id", assetId)
       .maybeSingle();
     if (variantError) throw new Error(`variant lookup failed: ${variantError.message}`);
     if (!variant) return error("VARIANT_NOT_FOUND", "Asset variant not found.", 404, requestId);
     objectPath = String(variant.object_path);
+    preview = { ...preview, ...variant, page_id: variant.asset_page_id ?? null };
+  } else if (pageId || pageNumber !== null || requestedVariantType) {
+    let pageQuery = auth.userClient.from("asset_pages").select("id,page_number").eq("asset_id", assetId);
+    if (pageId) pageQuery = pageQuery.eq("id", pageId);
+    if (pageNumber !== null) pageQuery = pageQuery.eq("page_number", pageNumber);
+    const { data: page, error: pageError } = await pageQuery.maybeSingle();
+    if (pageError) throw new Error(`page lookup failed: ${pageError.message}`);
+    if (!page) return error("PAGE_NOT_FOUND", "Asset page not found.", 404, requestId);
+
+    let variantQuery = auth.userClient.from("asset_variants")
+      .select("id,object_path,asset_page_id,variant_type,mime_type,width,height,duration_ms,size_bytes,metadata")
+      .eq("asset_id", assetId)
+      .eq("asset_page_id", page.id)
+      .order("created_at", { ascending: true })
+      .limit(1);
+    if (requestedVariantType) variantQuery = variantQuery.eq("variant_type", requestedVariantType);
+    const { data: variant, error: variantError } = await variantQuery.maybeSingle();
+    if (variantError) throw new Error(`variant lookup failed: ${variantError.message}`);
+    if (!variant) return error("VARIANT_NOT_FOUND", "Asset page variant not found.", 404, requestId);
+    objectPath = String(variant.object_path);
+    preview = { ...preview, ...variant, page_id: variant.asset_page_id ?? page.id, page_number: page.page_number };
   }
 
   const { data: signed, error: signedError } = await auth.admin.storage.from(BUCKET).createSignedUrl(objectPath, expiresIn);
   if (signedError || !signed?.signedUrl) throw new Error(`signed read failed: ${signedError?.message ?? "missing URL"}`);
-  return json({ asset_id: assetId, variant_id: variantId, signed_url: signed.signedUrl, expires_in: expiresIn, request_id: requestId });
+  return json({ asset_id: assetId, variant_id: variantId, ...preview, signed_url: signed.signedUrl, expires_in: expiresIn, request_id: requestId });
 }
 
 async function archiveAsset(auth: AuthContext, body: Record<string, unknown>, requestId: string): Promise<Response> {
@@ -319,6 +358,13 @@ function text(value: unknown): string {
 function integer(value: unknown, fallback: number): number {
   const parsed = typeof value === "number" ? value : Number(value);
   return Number.isSafeInteger(parsed) ? parsed : fallback;
+}
+
+function optionalPositiveInteger(value: unknown, field: string): number | null {
+  if (value === undefined || value === null || value === "") return null;
+  const parsed = integer(value, 0);
+  if (parsed < 1) throw new HttpError("VALIDATION_FAILED", `${field} must be a positive integer.`, 400);
+  return parsed;
 }
 
 function uuid(value: unknown, field: string): string {

@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Broadcast } from "@phosphor-icons/react";
 import { useManagerContext } from "../../app/ManagerContextProvider";
 import { useBoardEditor } from "./useBoardEditor";
 import type { ElementType, SceneElement, BoardScene, ShapeVariant } from "../../services/scena-api/boards";
 import { SHAPE_VARIANT_PRESETS, SHAPE_VARIANT_SIZE } from "../../components/editor/shapeVariants";
-import { listAssets } from "../../services/scena-api/assets";
+import { getAsset, listAssets, selectAssetPreviewVariant, signAssetRead } from "../../services/scena-api/assets";
 import type { AssetSummary } from "../../services/scena-api/assets";
 import {
   EditorTopBar, EditorRail, EditorBottomBar, useEditorFullscreen,
@@ -64,6 +65,7 @@ function defaultConfigFor(type: ElementType): Record<string, unknown> {
 
 export function BoardEditorPage() {
   const { boardId } = useParams<{ boardId: string }>();
+  const [searchParams] = useSearchParams();
   const context = useManagerContext();
   const navigate = useNavigate();
   const toast = useToast();
@@ -73,6 +75,8 @@ export function BoardEditorPage() {
   const [activePanel, setActivePanel] = useState<EditorRailItemKey | null>("elements");
   const [scenesVisible, setScenesVisible] = useState(true);
   const [assets, setAssets] = useState<AssetSummary[] | null>(null);
+  const liveSessionId = searchParams.get("liveSession");
+  const [assetPreviewUrls, setAssetPreviewUrls] = useState<Map<string, string>>(new Map());
   const editorRootRef = useRef<HTMLDivElement>(null);
   const fullscreen = useEditorFullscreen(editorRootRef);
 
@@ -80,9 +84,42 @@ export function BoardEditorPage() {
 
   // Workspace Assets for the Uploads panel (was inside ElementsPanel).
   useEffect(() => {
+    let active = true;
+    setAssets(null);
+    setAssetPreviewUrls(new Map());
+
     listAssets(context.workspace.id, { status: "ready", limit: 30 })
-      .then((res) => setAssets(res.assets))
-      .catch(() => setAssets([]));
+      .then(async (res) => {
+        if (!active) return;
+        setAssets(res.assets);
+        const previews = await Promise.all(res.assets.map(async (asset) => {
+          try {
+            const detail = await getAsset(asset.id);
+            const entries: Array<readonly [string, string]> = [];
+            const variant = selectAssetPreviewVariant(detail, "full");
+            if (variant) {
+              const signed = await signAssetRead(asset.id, variant.id);
+              entries.push([asset.id, signed.signed_url]);
+            }
+            // PowerPoint/PDF assets can expose one image variant per page.
+            // Keep those page keys too so existing asset_page elements render
+            // the page they reference instead of falling back to a label.
+            await Promise.all(detail.variants
+              .filter((candidate) => candidate.asset_page_id && candidate.mime_type.startsWith("image/"))
+              .map(async (candidate) => {
+                const signed = await signAssetRead(asset.id, candidate.id);
+                entries.push([candidate.asset_page_id!, signed.signed_url]);
+              }));
+            return entries;
+          } catch {
+            return [];
+          }
+        }));
+        if (active) setAssetPreviewUrls(new Map(previews.flat()));
+      })
+      .catch(() => active && setAssets([]));
+
+    return () => { active = false; };
   }, [context.workspace.id]);
 
   // Keyboard delete + arrow-key nudge for the selected Element. Declared
@@ -256,15 +293,20 @@ export function BoardEditorPage() {
   }
 
   const panelContent =
-    activePanel === "elements" ? <ElementsGridPanel onAddElement={(type) => handleAddElement(type)} onAddShape={handleAddShape} />
+    activePanel === "elements" ? <ElementsGridPanel onAddElement={(type) => handleAddElement(type)} onAddShape={handleAddShape} onAddLibraryAsset={(type, config) => handleAddElement(type, undefined, config)} />
     : activePanel === "text" ? <TextPresetsPanel onInsertPreset={handleAddTextPreset} />
-    : activePanel === "uploads" ? <UploadsPanel assets={assets} onInsertAsset={(assetId) => handleAddElement("asset_page", assetId)} />
+    : activePanel === "uploads" ? <UploadsPanel assets={assets} previewUrls={assetPreviewUrls} onInsertAsset={(assetId) => handleAddElement("asset_page", assetId)} />
     : activePanel === "templates" ? <PremiumUpsellPanel feature="templates" />
     : activePanel === "brand" ? <PremiumUpsellPanel feature="brand" />
     : null;
 
   return (
     <div className="scena-editor scena-editor--shell" ref={editorRootRef}>
+      {liveSessionId && (
+        <div className="scena-editor__live-banner" role="status">
+          <Broadcast size={16} /> Live Session update mode — save to push the next Board version to connected Displays.
+        </div>
+      )}
       <EditorTopBar
         name={snapshot.board.name}
         onRename={editor.rename}
@@ -294,6 +336,7 @@ export function BoardEditorPage() {
             canvasHeight={snapshot.board.canvas_height}
             backgroundColor={snapshot.board.background_color}
             scene={scene}
+            assetPreviewUrls={assetPreviewUrls}
             selectedElementId={editor.selectedElementId}
             onSelect={editor.setSelectedElementId}
             onCommit={(elementId, patch) => editor.updateElement(scene.id, elementId, patch)}

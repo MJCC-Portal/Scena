@@ -71,6 +71,23 @@ export interface AssetVariant {
   created_at: string;
 }
 
+export interface AssetPreview {
+  asset_id: string;
+  page_id: string | null;
+  page_number: number | null;
+  variant_id: string | null;
+  variant_type: AssetVariantType | "source";
+  mime_type: string;
+  width: number | null;
+  height: number | null;
+  duration_ms: number | null;
+  size_bytes: number | null;
+  metadata: Record<string, unknown>;
+  signed_url: string;
+  expires_in: number;
+  request_id: string;
+}
+
 export interface AssetProcessingJob {
   id: string;
   job_type: string;
@@ -124,9 +141,26 @@ export interface AssetDetailResponse {
 export interface SignedAssetReadResponse {
   asset_id: string;
   variant_id: string | null;
+  page_id: string | null;
+  page_number: number | null;
+  variant_type: AssetVariantType | "source";
+  mime_type: string;
+  width: number | null;
+  height: number | null;
+  duration_ms: number | null;
+  size_bytes: number | null;
+  metadata: Record<string, unknown>;
   signed_url: string;
   expires_in: number;
   request_id: string;
+}
+
+export interface AssetPreviewOptions {
+  pageId?: string | null;
+  pageNumber?: number | null;
+  preference?: "thumbnail" | "full";
+  expiresIn?: number;
+  signal?: AbortSignal;
 }
 
 export interface AssetListFilters {
@@ -266,6 +300,28 @@ export async function signAssetRead(
   );
 }
 
+export async function getAssetPreview(
+  assetId: string,
+  options: AssetPreviewOptions = {},
+): Promise<AssetPreview> {
+  const detail = await getAsset(assetId, options.signal);
+  const variant = selectAssetPreviewVariant(detail, options.preference ?? "thumbnail", {
+    pageId: options.pageId,
+    pageNumber: options.pageNumber,
+  });
+
+  if (!variant) {
+    throw new ScenaApiError(
+      "PREVIEW_NOT_AVAILABLE",
+      "This Asset does not have an image preview yet.",
+      409,
+      detail.request_id,
+    );
+  }
+
+  return signAssetRead(assetId, variant.id, options.expiresIn, options.signal);
+}
+
 export async function archiveAsset(
   assetId: string,
   signal?: AbortSignal,
@@ -313,15 +369,26 @@ export async function waitForAsset(
 }
 
 export function selectAssetPreviewVariant(
-  detail: Pick<AssetDetailResponse, "variants">,
+  detail: Pick<AssetDetailResponse, "variants"> & Partial<Pick<AssetDetailResponse, "pages">>,
   preference: "thumbnail" | "full" = "thumbnail",
+  scope: Pick<AssetPreviewOptions, "pageId" | "pageNumber"> = {},
 ): AssetVariant | null {
   const order: AssetVariantType[] = preference === "thumbnail"
     ? ["thumbnail", "preview", "source_render", "display_1080p"]
     : ["source_render", "preview", "display_1080p", "thumbnail"];
 
+  const pageIdForNumber = scope.pageNumber === undefined || scope.pageNumber === null
+    ? null
+    : detail.pages?.find((page) => page.page_number === scope.pageNumber)?.id ?? null;
+  const scoped = detail.variants.filter((candidate) => {
+    if (scope.pageId && candidate.asset_page_id !== scope.pageId) return false;
+    if (pageIdForNumber && candidate.asset_page_id !== pageIdForNumber) return false;
+    if (scope.pageNumber !== undefined && scope.pageNumber !== null && !pageIdForNumber) return false;
+    return true;
+  });
+
   for (const type of order) {
-    const variant = detail.variants.find(
+    const variant = scoped.find(
       (candidate) => candidate.variant_type === type && candidate.mime_type.startsWith("image/"),
     );
     if (variant) return variant;
